@@ -1,0 +1,22 @@
+
+node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Dependency directories
+dist/
+build/
+.cache/
+.tmp/
+
+# TypeScript
+*.tsbuild*
+

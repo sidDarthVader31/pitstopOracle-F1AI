@@ -1,0 +1,46 @@
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Dependency directories
+dist/
+build/
+.cache/
+.tmp/
+
+# TypeScript
+*.tsbuildinfo
+
+# Env files
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Coverage & testing
+coverage/
+.nyc_output/
+test-results/
+
+# Docker
+docker-compose.override.yml
+*.local.yml
+
+# Misc
+.DS_Store
+*.swp
