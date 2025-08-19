@@ -2,7 +2,6 @@ import {
   Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn,
   CreateDateColumn, UpdateDateColumn
 } from "typeorm";
-import { Constructor } from "./Constructor";
 import { Season } from "./Season";
 
 @Entity("car")
