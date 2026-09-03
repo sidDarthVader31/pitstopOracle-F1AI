@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="Pitstop Oracle">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f8fafc"/>
+    </linearGradient>
+    <pattern id="checkers" width="24" height="24" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="#f3f4f6"/>
+      <rect x="12" y="12" width="12" height="12" fill="#f3f4f6"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="300" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="8" fill="#e10600"/>
+  <rect x="0" y="292" width="1200" height="8" fill="#e10600"/>
+  <rect x="900" y="40" width="260" height="220" fill="url(#checkers)" opacity="0.5"/>
+  <circle cx="120" cy="150" r="56" fill="none" stroke="#e10600" stroke-width="6"/>
+  <circle cx="120" cy="150" r="38" fill="#e10600" opacity="0.12"/>
+  <text x="210" y="130" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="52" font-weight="700" fill="#111827">Pitstop Oracle</text>
+  <text x="210" y="175" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="22" font-weight="500" fill="#6b7280">ML-powered F1 race-winner predictions</text>
+  <text x="210" y="210" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="16" fill="#9ca3af">Historical results · Streamlit dashboard · scikit-learn</text>
+</svg>

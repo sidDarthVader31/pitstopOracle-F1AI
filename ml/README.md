@@ -1,8 +1,8 @@
-# F1 winner model (v1)
+# ML pipeline
 
-Beginner pipeline: free Jolpica results + Open-Meteo weather → one row per driver per race → baselines vs sklearn.
+Technical setup for the Pitstop Oracle model and Streamlit dashboard.
 
-Telemetry / FastF1 lap data is intentionally not used here.
+**Start here:** [Project README](../README.md) · [Full documentation](../docs/README.md) · [Architecture](../docs/ARCHITECTURE.md)
 
 ## Setup
 
@@ -13,21 +13,36 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run
+## Commands
 
-```bash
-python run_pipeline.py
-```
+| Command | Purpose |
+|---|---|
+| `python run_pipeline.py` | Ingest Jolpica data + train models |
+| `python run_pipeline.py --skip-ingest` | Retrain from cached raw data |
+| `streamlit run app.py` | Launch dashboard |
+| `python predict_race.py --season 2026 --round 13` | CLI prediction for one GP |
+| `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
 
-Re-run training only (after ingest cache exists):
+## Dashboard pages
 
-```bash
-python run_pipeline.py --skip-ingest
-```
+See [docs/README.md](../docs/README.md#dashboard-tour) for screenshots.
 
-Writes:
+| Page | File |
+|---|---|
+| This Weekend | `pages/1_This_Weekend.py` |
+| Race Explorer | `pages/2_Race_Explorer.py` |
+| Fantasy Lab | `pages/3_Fantasy_Lab.py` |
+| Model Performance | `pages/4_Model_Performance.py` |
 
-- `data/raw/*.parquet` — races, results, qualifying, sprints, standings, weather
-- `data/processed/driver_race.parquet` — feature table
-- `models/winner_rf.joblib` — random forest
-- `reports/EVAL.md` — pole vs championship vs model hit rates
+## Outputs
+
+| Path | Contents |
+|---|---|
+| `data/raw/*.parquet` | Races, results, qualifying, standings, weather |
+| `data/processed/driver_race.parquet` | Feature table (one row per driver per race) |
+| `models/winner_rf.joblib` | Random forest classifier |
+| `reports/EVAL.md` | Evaluation vs pole baseline |
+
+## Deploy (optional)
+
+[Streamlit Community Cloud](https://streamlit.io/cloud): main file `ml/app.py`, Python 3.11+.
