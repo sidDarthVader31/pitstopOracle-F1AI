@@ -20,14 +20,17 @@ def _is_classified(status: str | None) -> bool:
 def _rolling_by_entity(df: pd.DataFrame, entity: str, windows: tuple[int, ...] = (3, 5)) -> pd.DataFrame:
     """Shifted rolling stats so the current race is not included."""
     out = df.sort_values(["season", "round"]).copy()
-    grouped = out.groupby(entity, sort=False)
-    shifted_points = grouped["points"].shift(1)
-    shifted_finish = grouped["position"].shift(1)
-    shifted_dnf = grouped["dnf"].shift(1)
+    grp = out.groupby(entity, sort=False)
     for w in windows:
-        out[f"{entity}_points_last_{w}"] = shifted_points.groupby(out[entity]).rolling(w, min_periods=1).sum().reset_index(level=0, drop=True)
-        out[f"{entity}_avg_finish_last_{w}"] = shifted_finish.groupby(out[entity]).rolling(w, min_periods=1).mean().reset_index(level=0, drop=True)
-        out[f"{entity}_dnf_rate_last_{w}"] = shifted_dnf.groupby(out[entity]).rolling(w, min_periods=1).mean().reset_index(level=0, drop=True)
+        out[f"{entity}_points_last_{w}"] = grp["points"].transform(
+            lambda s: s.shift(1).rolling(w, min_periods=1).sum()
+        )
+        out[f"{entity}_avg_finish_last_{w}"] = grp["position"].transform(
+            lambda s: s.shift(1).rolling(w, min_periods=1).mean()
+        )
+        out[f"{entity}_dnf_rate_last_{w}"] = grp["dnf"].transform(
+            lambda s: s.shift(1).rolling(w, min_periods=1).mean()
+        )
     return out
 
 
@@ -129,14 +132,14 @@ def build_driver_race() -> pd.DataFrame:
     grouped = grouped.sort_values(["season", "round"])
     cgrp = grouped.groupby("constructor_id", sort=False)
     for w in (3, 5):
-        grouped[f"constructor_id_points_last_{w}"] = (
-            cgrp["constructor_race_points"].shift(1).groupby(grouped["constructor_id"]).rolling(w, min_periods=1).sum().reset_index(level=0, drop=True)
+        grouped[f"constructor_id_points_last_{w}"] = cgrp["constructor_race_points"].transform(
+            lambda s: s.shift(1).rolling(w, min_periods=1).sum()
         )
-        grouped[f"constructor_id_avg_finish_last_{w}"] = (
-            cgrp["constructor_best_finish"].shift(1).groupby(grouped["constructor_id"]).rolling(w, min_periods=1).mean().reset_index(level=0, drop=True)
+        grouped[f"constructor_id_avg_finish_last_{w}"] = cgrp["constructor_best_finish"].transform(
+            lambda s: s.shift(1).rolling(w, min_periods=1).mean()
         )
-        grouped[f"constructor_id_dnf_rate_last_{w}"] = (
-            cgrp["constructor_race_dnf"].shift(1).groupby(grouped["constructor_id"]).rolling(w, min_periods=1).mean().reset_index(level=0, drop=True)
+        grouped[f"constructor_id_dnf_rate_last_{w}"] = cgrp["constructor_race_dnf"].transform(
+            lambda s: s.shift(1).rolling(w, min_periods=1).mean()
         )
     df = df.merge(
         grouped[
@@ -162,11 +165,10 @@ def build_driver_race() -> pd.DataFrame:
 
     # Prior results at this circuit (exclude current race).
     df = df.sort_values(["date", "season", "round"])
-    hist = []
-    for (driver, circuit), g in df.groupby(["driver_id", "circuit_id"], sort=False):
-        prev_finish = g["position"].shift(1)
-        hist.append(prev_finish.expanding(min_periods=1).mean())
-    df["circuit_avg_finish_prior"] = pd.concat(hist).sort_index()
+    df["circuit_avg_finish_prior"] = (
+        df.groupby(["driver_id", "circuit_id"], sort=False)["position"]
+        .transform(lambda s: s.shift(1).expanding(min_periods=1).mean())
+    )
 
     df["is_wet"] = df["is_wet"].fillna(False).astype(int)
     df["sprint_position"] = df["sprint_position"].fillna(-1)

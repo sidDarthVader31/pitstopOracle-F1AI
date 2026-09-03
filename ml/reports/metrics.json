@@ -1,0 +1,23 @@
+{
+  "eda": {
+    "n_rows": 2102,
+    "n_races": 104,
+    "pole_win_rate": 0.5961538461538461,
+    "wet_race_share": 0.3942307692307692,
+    "overall_dnf_rate": 0.3306374881065652
+  },
+  "train_races": 68,
+  "test_races": 36,
+  "train_pole_hit": 0.5441176470588235,
+  "train_champ_hit": 0.6029411764705882,
+  "test_pole_hit": 0.6944444444444444,
+  "test_champ_hit": 0.3055555555555556,
+  "train_logreg_hit": 0.5735294117647058,
+  "train_logreg_top3": 0.8970588235294118,
+  "test_logreg_hit": 0.5277777777777778,
+  "test_logreg_top3": 0.8611111111111112,
+  "train_rf_hit": 0.8382352941176471,
+  "train_rf_top3": 1.0,
+  "test_rf_hit": 0.5833333333333334,
+  "test_rf_top3": 1.0
+}

@@ -7,8 +7,10 @@ from typing import Any
 import pandas as pd
 import requests
 
+from datetime import date
+
 from f1ml.jolpica import fetch_paginated, get_json
-from f1ml.paths import END_YEAR, OPEN_METEO, RAW, START_YEAR
+from f1ml.paths import CACHE, END_YEAR, OPEN_METEO, RAW, START_YEAR
 
 _WEATHER = requests.Session()
 _WEATHER.headers.update({"User-Agent": "pitstopOracle-F1AI/0.1"})
@@ -182,28 +184,37 @@ def ingest_standings_after_rounds(races: pd.DataFrame) -> pd.DataFrame:
 
 def ingest_weather(races: pd.DataFrame) -> pd.DataFrame:
     rows = []
+    today = date.today()
     grouped = races.dropna(subset=["lat", "lng", "date"]).drop_duplicates(
         ["season", "round", "lat", "lng", "date"]
     )
     for rec in grouped.itertuples(index=False):
-        params = {
-            "latitude": rec.lat,
-            "longitude": rec.lng,
-            "start_date": rec.date,
-            "end_date": rec.date,
-            "daily": "precipitation_sum,rain_sum,weathercode",
-            "timezone": "UTC",
-        }
-        dest = RAW.parent / "cache" / f"weather_{rec.season}_{rec.round}.json"
+        race_date = date.fromisoformat(str(rec.date)[:10])
+        dest = CACHE / f"weather_{rec.season}_{rec.round}.json"
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
+
+        if race_date > today:
+            payload = {}
+        elif dest.exists():
             payload = json.loads(dest.read_text())
         else:
+            params = {
+                "latitude": rec.lat,
+                "longitude": rec.lng,
+                "start_date": rec.date,
+                "end_date": rec.date,
+                "daily": "precipitation_sum,rain_sum,weathercode",
+                "timezone": "UTC",
+            }
             time.sleep(0.2)
             resp = _WEATHER.get(OPEN_METEO, params=params, timeout=60)
-            resp.raise_for_status()
-            payload = resp.json()
-            dest.write_text(json.dumps(payload))
+            if resp.status_code == 400:
+                payload = {}
+            else:
+                resp.raise_for_status()
+                payload = resp.json()
+                dest.write_text(json.dumps(payload))
+
         daily = payload.get("daily", {})
         precip = (daily.get("precipitation_sum") or [None])[0]
         rain = (daily.get("rain_sum") or [None])[0]
