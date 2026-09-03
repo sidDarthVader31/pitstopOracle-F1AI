@@ -44,3 +44,9 @@ docker-compose.override.yml
 # Misc
 .DS_Store
 *.swp
+
+# Python / F1 ML pipeline
+**/__pycache__/
+.venv/
+ml/.venv/
+ml/data/cache/
