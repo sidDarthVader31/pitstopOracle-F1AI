@@ -66,7 +66,7 @@ python predict_race.py --season 2026 --round 13
 
 ## Results snapshot
 
-Time split: train **2022–2024**, test **2025–2026** (from [`ml/reports/metrics.json`](ml/reports/metrics.json)).
+Time split: train **2022–2026** (walk-forward eval in [`ml/reports/metrics.json`](ml/reports/metrics.json)).
 
 | Method | Test winner hit rate |
 |:---|---:|
