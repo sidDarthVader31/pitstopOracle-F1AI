@@ -90,6 +90,8 @@ with tab_post:
       | Brier | {post_test.get('test_post_quali_brier', 0):.3f} |
       | Top-3 hit | {post_test.get('test_post_quali_top3', 0):.1%} |
       | Finish MAE | {post_test.get('test_post_quali_finish_mae', 0):.2f} |
+      | Ranker log-loss | {post_test.get('test_post_quali_ranker_log_loss', 0):.3f} |
+      | Ranker Brier | {post_test.get('test_post_quali_ranker_brier', 0):.3f} |
       """
     )
 

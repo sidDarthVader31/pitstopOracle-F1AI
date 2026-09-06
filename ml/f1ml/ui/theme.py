@@ -71,7 +71,20 @@ def apply_theme() -> None:
       }
       .status-pre { color: #b45309; font-weight: 600; }
       .status-post { color: #1d4ed8; font-weight: 600; }
+      .status-grid { color: #7c3aed; font-weight: 600; }
       .status-done { color: #047857; font-weight: 600; }
+      .phase-chip {
+        display: inline-block;
+        background: #111827;
+        color: #ffffff;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        margin-bottom: 0.5rem;
+      }
       .disclaimer {
         color: #9ca3af;
         font-size: 0.8rem;
@@ -92,10 +105,16 @@ def hero_card(title: str, name: str, subtitle: str = "") -> None:
 
 
 def status_badge(mode: str) -> None:
-  css = {"pre_quali": "status-pre", "post_quali": "status-post", "complete": "status-done"}
+  css = {
+    "pre_quali": "status-pre",
+    "post_quali": "status-post",
+    "grid_set": "status-grid",
+    "complete": "status-done",
+  }
   labels = {
     "pre_quali": "Pre-qualifying",
     "post_quali": "Post-qualifying",
+    "grid_set": "Grid set",
     "complete": "Race complete",
   }
   st.markdown(
@@ -104,8 +123,22 @@ def status_badge(mode: str) -> None:
   )
 
 
+def phase_chip(phase: str) -> None:
+  labels = {
+    "practice": "Practice",
+    "qualifying": "Qualifying",
+    "grid_set": "Grid set",
+    "race": "Race",
+    "complete": "Complete",
+  }
+  st.markdown(
+    f'<span class="phase-chip">{labels.get(phase, phase)}</span>',
+    unsafe_allow_html=True,
+  )
+
+
 def disclaimer_footer() -> None:
   st.markdown(
-    '<p class="disclaimer">Pitstop Oracle — hobby ML project. Not betting advice.</p>',
+    '<p class="disclaimer">Pitstop Oracle — ML forecasts for learning and fantasy. Not betting advice.</p>',
     unsafe_allow_html=True,
   )

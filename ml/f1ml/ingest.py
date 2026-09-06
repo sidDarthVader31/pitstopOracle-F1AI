@@ -267,3 +267,63 @@ def run(
     clear_bypass_cache_seasons()
     print(f"races={len(races)} results={len(results)} quali={len(quali)} "
           f"sprints={len(sprints)} standings={len(standings)} weather={len(weather)}")
+
+    _sync_canonical_sources(end_year)
+
+
+def _sync_canonical_sources(end_year: int) -> None:
+    """Pull live weekend data from OpenF1 / forecast APIs into canonical store."""
+    from f1ml.adapters.openf1 import OpenF1Adapter
+    from f1ml.adapters.openmeteo import OpenMeteoForecastAdapter
+    from f1ml.paths import CANONICAL
+    from f1ml.starting_grid import ensure_manual_template, sync_starting_grid
+
+    ensure_manual_template()
+    try:
+        grid = sync_starting_grid(end_year)
+        print(f"starting_grid rows={len(grid)}")
+    except Exception as exc:
+        print(f"starting_grid sync skipped: {exc}")
+
+    try:
+        openf1 = OpenF1Adapter().pull(end_year, round_num=None)
+        if openf1.session_results:
+            CANONICAL.mkdir(parents=True, exist_ok=True)
+            fp_rows = [
+                {
+                    "season": r.season,
+                    "round": r.round,
+                    "driver_id": r.driver_id,
+                    "session_type": r.session_type,
+                    "best_lap_seconds": r.best_lap_seconds,
+                }
+                for r in openf1.session_results
+            ]
+            import pandas as pd
+
+            pd.DataFrame(fp_rows).to_parquet(CANONICAL / "fp_pace.parquet", index=False)
+            print(f"fp_pace rows={len(fp_rows)}")
+    except Exception as exc:
+        print(f"fp_pace sync skipped: {exc}")
+
+    try:
+        forecast = OpenMeteoForecastAdapter().pull(end_year)
+        if forecast.weather:
+            CANONICAL.mkdir(parents=True, exist_ok=True)
+            import pandas as pd
+
+            w_rows = [
+                {
+                    "season": w.season,
+                    "round": w.round,
+                    "precipitation_mm": w.precipitation_mm,
+                    "is_wet": int(w.is_wet),
+                    "forecast": int(w.forecast),
+                    "source": w.source,
+                }
+                for w in forecast.weather
+            ]
+            pd.DataFrame(w_rows).to_parquet(CANONICAL / "weather_forecast.parquet", index=False)
+            print(f"weather_forecast rows={len(w_rows)}")
+    except Exception as exc:
+        print(f"weather_forecast sync skipped: {exc}")

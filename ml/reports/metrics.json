@@ -79,6 +79,9 @@
         "count": 20
       }
     ],
+    "train_pre_quali_ranker_hit": 0.625,
+    "train_pre_quali_ranker_log_loss": 1.9353485636122643,
+    "train_pre_quali_ranker_brier": 0.032214339733593125,
     "train_pre_quali_wet_log_loss": 0.8929172390337279,
     "train_pre_quali_wet_hit": 1.0,
     "train_pre_quali_dry_log_loss": 0.9180207248696105,
@@ -121,6 +124,9 @@
         "count": 65
       }
     ],
+    "train_post_quali_ranker_hit": 0.6826923076923077,
+    "train_post_quali_ranker_log_loss": 0.9518066236247873,
+    "train_post_quali_ranker_brier": 0.022219384815261842,
     "train_post_quali_wet_log_loss": 0.6121101911391179,
     "train_post_quali_wet_hit": 1.0,
     "train_post_quali_dry_log_loss": 0.6107692980266579,

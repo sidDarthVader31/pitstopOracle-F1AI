@@ -67,10 +67,11 @@ def make_pipeline(kind: str, numeric: list[str], categorical: list[str]) -> Pipe
 def feature_matrix(df: pd.DataFrame, mode: WeekendMode) -> pd.DataFrame:
     numeric, categorical = feature_columns(mode)
     cols = numeric + categorical
-    missing = [c for c in cols if c not in df.columns]
-    if missing:
-        raise KeyError(f"Missing feature columns: {missing}")
-    return df[cols]
+    work = df.copy()
+    for c in cols:
+        if c not in work.columns:
+            work[c] = np.nan
+    return work[cols]
 
 
 def raw_win_scores(model: Pipeline, df: pd.DataFrame, mode: WeekendMode) -> np.ndarray:
@@ -89,6 +90,32 @@ def apply_race_probs(
         p = race_softmax(s, temperature=temperature)
         probs.loc[g.index] = p
     return probs
+
+
+def finish_position_probs(
+    expected_finish: pd.Series, n_positions: int, sigma: float = 2.0
+) -> pd.DataFrame:
+    """Plackett-Luce style finish distribution from expected finish positions."""
+    positions = list(range(1, n_positions + 1))
+    rows = {}
+    for idx, ef in expected_finish.items():
+        weights = [max(0.01, np.exp(-abs(p - float(ef)) / sigma)) for p in positions]
+        total = sum(weights)
+        rows[idx] = [w / total for w in weights]
+    return pd.DataFrame(rows, index=positions).T
+
+
+def plackett_luce_win_probs(
+    df: pd.DataFrame, expected_finish: pd.Series, temperature: float = 1.0
+) -> pd.Series:
+    """Derive win probabilities from expected finish via race-level softmax on inverse rank."""
+    raw = pd.Series(0.0, index=df.index)
+    for (_, _), g in df.groupby(["season", "round"], sort=False):
+        ef = expected_finish.loc[g.index]
+        scores = -ef.astype(float).values
+        p = race_softmax(scores, temperature=temperature)
+        raw.loc[g.index] = p
+    return raw
 
 
 def predict_binary_proba(

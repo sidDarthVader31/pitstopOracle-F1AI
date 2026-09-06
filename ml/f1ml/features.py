@@ -3,10 +3,66 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from f1ml.paths import PROCESSED, RAW
+from f1ml.paths import PROCESSED, RAW, CANONICAL
 
 CLASSIFIED = ("Finished",)
 DNF_PREFIX_OK = ("+",)  # +1 Lap, +2 Laps, ...
+
+
+def _merge_fp_pace(df: pd.DataFrame) -> pd.DataFrame:
+    """Attach FP2/FP3 best-lap delta vs field median from canonical store."""
+    path = CANONICAL / "fp_pace.parquet"
+    df["fp2_best_lap_delta"] = np.nan
+    df["fp3_best_lap_delta"] = np.nan
+    if not path.exists():
+        return df
+    fp = pd.read_parquet(path)
+    for session, col in (("FP2", "fp2_best_lap_delta"), ("FP3", "fp3_best_lap_delta")):
+        sub = fp[fp["session_type"] == session].copy()
+        if sub.empty:
+            continue
+        medians = (
+            sub.groupby(["season", "round"])["best_lap_seconds"]
+            .median()
+            .rename("session_median")
+        )
+        sub = sub.merge(medians, on=["season", "round"], how="left")
+        sub[col] = sub["best_lap_seconds"] - sub["session_median"]
+        merge_cols = sub[["season", "round", "driver_id", col]]
+        df = df.drop(columns=[col], errors="ignore")
+        df = df.merge(merge_cols, on=["season", "round", "driver_id"], how="left")
+    return df
+
+
+def _merge_weather_forecast(df: pd.DataFrame) -> pd.DataFrame:
+    """Overlay forecast precipitation for races not yet run."""
+    path = CANONICAL / "weather_forecast.parquet"
+    if not path.exists():
+        return df
+    fc = pd.read_parquet(path)
+    if fc.empty:
+        return df
+    completed = df.groupby(["season", "round"])["position"].transform(lambda s: s.notna().any())
+    upcoming_mask = ~completed
+    if not upcoming_mask.any():
+        return df
+    fc_view = fc.rename(
+        columns={
+            "precipitation_mm": "forecast_precipitation_mm",
+            "is_wet": "forecast_is_wet",
+        }
+    )
+    df = df.merge(
+        fc_view[["season", "round", "forecast_precipitation_mm", "forecast_is_wet"]],
+        on=["season", "round"],
+        how="left",
+    )
+    df.loc[upcoming_mask & df["forecast_precipitation_mm"].notna(), "precipitation_mm"] = df[
+        "forecast_precipitation_mm"
+    ]
+    df.loc[upcoming_mask & df["forecast_is_wet"].notna(), "is_wet"] = df["forecast_is_wet"].astype(int)
+    df = df.drop(columns=["forecast_precipitation_mm", "forecast_is_wet"], errors="ignore")
+    return df
 
 
 def _is_classified(status: str | None) -> bool:
@@ -191,6 +247,9 @@ def build_driver_race() -> pd.DataFrame:
         .transform(lambda s: s.shift(1).expanding(min_periods=1).mean())
     )
 
+    df = _merge_fp_pace(df)
+    df = _merge_weather_forecast(df)
+
     df["is_wet"] = df["is_wet"].fillna(False).astype(int)
     df["sprint_position"] = df["sprint_position"].fillna(-1)
     numeric_fill = [
@@ -215,6 +274,8 @@ def build_driver_race() -> pd.DataFrame:
         "circuit_grid_to_finish_delta",
         "teammate_quali_h2h_rate",
         "precipitation_mm",
+        "fp2_best_lap_delta",
+        "fp3_best_lap_delta",
     ]
     for col in numeric_fill:
         if col in df.columns:

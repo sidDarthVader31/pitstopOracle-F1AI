@@ -20,7 +20,7 @@ st.title("Race Explorer")
 
 races = list_races()
 with st.sidebar:
-  model_kind, normalize = sidebar_model_controls()
+  model_kind, normalize = sidebar_model_controls(show_lab=True)
   wet_only = st.checkbox("Wet races only", value=False)
 
 if wet_only:

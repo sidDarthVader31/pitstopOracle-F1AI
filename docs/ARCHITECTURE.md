@@ -21,7 +21,11 @@ flowchart LR
 
 | Module | Role |
 |---|---|
-| [`ml/f1ml/ingest.py`](../ml/f1ml/ingest.py) | Pull races, results, qualifying, standings, weather from Jolpica + Open-Meteo; cache to `data/raw/` |
+| [`ml/f1ml/adapters/`](../ml/f1ml/adapters/) | Pluggable sources: Jolpica, OpenF1, Open-Meteo, manual CSV |
+| [`ml/f1ml/schema/`](../ml/f1ml/schema/) | Canonical entity definitions |
+| [`docs/DATASET.md`](DATASET.md) | Stable schema, relations, null rules |
+| [`ml/f1ml/ingest.py`](../ml/f1ml/ingest.py) | Pull races, results, qualifying, standings, weather from Jolpica + Open-Meteo; sync canonical |
+| [`ml/f1ml/starting_grid.py`](../ml/f1ml/starting_grid.py) | Official starting grid merge (OpenF1 + manual) |
 | [`ml/f1ml/features.py`](../ml/f1ml/features.py) | One row per driver per race; rolling form, circuit overtaking index, teammate H2H |
 | [`ml/f1ml/specs.py`](../ml/f1ml/specs.py) | Pre-quali vs post-quali feature definitions |
 | [`ml/f1ml/train.py`](../ml/f1ml/train.py) | Dual-mode training, walk-forward eval, gradient boosting + logreg baselines |
@@ -46,7 +50,8 @@ For races not yet in `driver_race.parquet` (e.g. Monza before qualifying):
 1. `resolve_race_features(season, round)` tries completed race data
 2. Falls back to `build_upcoming_race_features()` using the latest completed round in the season for driver lineup and form
 3. Championship standings come from standings after that round
-4. Qualifying columns are merged from `data/raw/qualifying.parquet` when available — model imputes missing values otherwise
+4. Qualifying columns are merged from `data/raw/qualifying.parquet` when available
+5. **Starting grid** is merged from `data/canonical/starting_grid.parquet` (OpenF1 + `data/manual/starting_grid.csv`) — penalties applied via `grid` and `grid_vs_quali`, not quali copy
 
 ## Future warehouse
 

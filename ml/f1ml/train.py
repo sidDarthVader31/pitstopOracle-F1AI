@@ -30,6 +30,7 @@ from f1ml.modeling import (
     apply_race_probs,
     feature_matrix,
     make_pipeline,
+    plackett_luce_win_probs,
     predict_binary_proba,
     raw_win_scores,
 )
@@ -139,6 +140,7 @@ def _eval_mode(
     scored = _score_bundle(df, bundle)
     probs = scored["win_prob"]
     raw = scored["win_prob_raw"]
+    rank_probs = plackett_luce_win_probs(df, scored["expected_finish"], temperature=bundle.temperature)
     metrics: dict = {
         f"{prefix}_hit": winner_hit_rate(df, probs),
         f"{prefix}_top3": topk_hit_rate(df, probs, k=3),
@@ -147,6 +149,9 @@ def _eval_mode(
         f"{prefix}_rank_corr": rank_correlation(df, raw),
         f"{prefix}_finish_mae": finish_mae(df, scored["expected_finish"]),
         f"{prefix}_calibration": calibration_bins(df, probs),
+        f"{prefix}_ranker_hit": winner_hit_rate(df, rank_probs),
+        f"{prefix}_ranker_log_loss": race_log_loss(df, rank_probs),
+        f"{prefix}_ranker_brier": race_brier(df, rank_probs),
     }
     metrics.update({f"{prefix}_{k}": v for k, v in slice_metrics(df, probs, probs).items()})
     return metrics
@@ -241,6 +246,7 @@ def _write_eval_md(metrics: dict) -> None:
             f"| Log-loss | {post_test.get('test_post_quali_log_loss', 0):.3f} | {post_test.get('test_post_quali_pole_log_loss', 0):.3f} | {post_test.get('test_post_quali_champ_log_loss', 0):.3f} |",
             f"| Brier | {post_test.get('test_post_quali_brier', 0):.3f} | {post_test.get('test_post_quali_pole_brier', 0):.3f} | — |",
             f"| Top-3 hit | {post_test.get('test_post_quali_top3', 0):.1%} | — | — |",
+            f"| Ranker log-loss | {post_test.get('test_post_quali_ranker_log_loss', 0):.3f} | — | — |",
             "",
         ]
     lines += [

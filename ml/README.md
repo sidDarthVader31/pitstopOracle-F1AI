@@ -20,6 +20,7 @@ pip install -r requirements.txt
 | `python run_pipeline.py` | Ingest Jolpica data + train models |
 | `python run_pipeline.py --refresh` | Clear Jolpica cache for ingest years and re-fetch |
 | `python run_pipeline.py --skip-ingest` | Retrain from cached raw data |
+| `python -c "from f1ml.starting_grid import sync_starting_grid; sync_starting_grid(2026, 13)"` | Refresh starting grid for one GP |
 | `streamlit run app.py` | Launch dashboard |
 | `python predict_race.py --season 2026 --round 13` | CLI weekend card for one GP |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
@@ -49,6 +50,8 @@ Each mode trains gradient boosting heads for **win**, **podium**, **DNF**, and *
 | Path | Contents |
 |---|---|
 | `data/raw/*.parquet` | Races, results, qualifying, standings, weather |
+| `data/canonical/*.parquet` | Starting grid, FP pace, weather forecast |
+| `data/manual/*.csv` | Grid penalties and fantasy prices overrides |
 | `data/processed/driver_race.parquet` | Feature table (one row per driver per race) |
 | `models/pre_quali/` | Pre-quali model bundle |
 | `models/post_quali/` | Post-quali model bundle |
