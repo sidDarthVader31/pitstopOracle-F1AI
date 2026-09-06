@@ -475,7 +475,9 @@ def weekend_card(
     out["podium_prob"] = predict_binary_proba(bundle.podium_model, race_df, wmode)
     out["dnf_prob"] = predict_binary_proba(bundle.dnf_model, race_df, wmode)
     out["expected_finish"] = bundle.finish_model.predict(feature_matrix(race_df, wmode))
-    rank_probs = plackett_luce_win_probs(race_df, out["expected_finish"], temperature=bundle.temperature)
+    rank_probs = plackett_luce_win_probs(
+        race_df, out["expected_finish"], temperature=bundle.ranker_temperature
+    )
     out["win_prob_ranker"] = rank_probs
     out["expected_fantasy_pts"] = expected_driver_fantasy_points(out)
     out["model_pick"] = out["win_prob"] == out["win_prob"].max()

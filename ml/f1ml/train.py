@@ -116,6 +116,7 @@ def _train_mode_models(
         finish_model=finish_pipe,
         win_logreg=logreg_pipe,
         temperature=temperature,
+        ranker_temperature=1.0,
     )
 
 
@@ -140,7 +141,9 @@ def _eval_mode(
     scored = _score_bundle(df, bundle)
     probs = scored["win_prob"]
     raw = scored["win_prob_raw"]
-    rank_probs = plackett_luce_win_probs(df, scored["expected_finish"], temperature=bundle.temperature)
+    rank_probs = plackett_luce_win_probs(
+        df, scored["expected_finish"], temperature=bundle.ranker_temperature
+    )
     metrics: dict = {
         f"{prefix}_hit": winner_hit_rate(df, probs),
         f"{prefix}_top3": topk_hit_rate(df, probs, k=3),
@@ -352,3 +355,39 @@ def train_and_eval() -> dict:
     (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
     _write_eval_md(metrics)
     return metrics
+
+
+def recalibrate_temperatures() -> dict:
+    """Refit win-model temperature on existing joblibs without retraining classifiers."""
+    df = _load_training_frame()
+    train, test = _split(df)
+    train_post = train[train["quali_position"].notna()].copy()
+    test_post = test[test["quali_position"].notna()].copy()
+
+    MODELS.mkdir(parents=True, exist_ok=True)
+    results: dict = {}
+    for mode, train_df, val_df in [
+        ("pre_quali", train, test if len(test) else train),
+        ("post_quali", train_post, test_post if len(test_post) else train_post),
+    ]:
+        bundle = WeekendModels.load(MODELS / mode)
+        cal_df = val_df if len(val_df) else train_df
+        raw = pd.Series(raw_win_scores(bundle.win_model, cal_df, mode), index=cal_df.index)
+        bundle.temperature = fit_temperature(cal_df, raw)
+        bundle.ranker_temperature = 1.0
+        bundle.save(MODELS / mode)
+        results[f"{mode}_temperature"] = bundle.temperature
+        results[f"{mode}_ranker_temperature"] = bundle.ranker_temperature
+
+    metrics_path = REPORTS / "metrics.json"
+    if metrics_path.exists():
+        metrics = json.loads(metrics_path.read_text())
+    else:
+        metrics = {}
+    metrics["pre_quali_temperature"] = results["pre_quali_temperature"]
+    metrics["post_quali_temperature"] = results["post_quali_temperature"]
+    metrics["pre_quali_ranker_temperature"] = results["pre_quali_ranker_temperature"]
+    metrics["post_quali_ranker_temperature"] = results["post_quali_ranker_temperature"]
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(json.dumps(metrics, indent=2, default=str))
+    return results

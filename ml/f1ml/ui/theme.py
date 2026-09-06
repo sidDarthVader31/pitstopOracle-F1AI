@@ -90,6 +90,12 @@ def apply_theme() -> None:
         font-size: 0.8rem;
         margin-top: 2rem;
       }
+      div[data-testid="stPlotlyChart"] {
+        margin-bottom: 0.75rem;
+      }
+      h3 {
+        margin-top: 1.25rem !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,

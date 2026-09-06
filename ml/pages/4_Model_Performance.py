@@ -35,8 +35,8 @@ tab_pre, tab_post, tab_wf = st.tabs(["Pre-quali", "Post-quali", "Walk-forward"])
 
 with tab_pre:
   st.subheader("Pre-qualifying model (no quali/grid features)")
-  st.plotly_chart(accuracy_bars(metrics, mode="pre_quali"), use_container_width=True)
-  st.plotly_chart(log_loss_bars(metrics, mode="pre_quali"), use_container_width=True)
+  st.plotly_chart(accuracy_bars(metrics, mode="pre_quali"), use_container_width=True, key="pre_accuracy")
+  st.plotly_chart(log_loss_bars(metrics, mode="pre_quali"), use_container_width=True, key="pre_logloss")
   cal = pre_test.get("test_pre_quali_calibration", [])
   if cal:
     st.plotly_chart(calibration_chart(cal, "Pre-quali calibration"), use_container_width=True)
@@ -65,8 +65,8 @@ with tab_pre:
 
 with tab_post:
   st.subheader("Post-qualifying model (quali + grid included)")
-  st.plotly_chart(accuracy_bars(metrics, mode="post_quali"), use_container_width=True)
-  st.plotly_chart(log_loss_bars(metrics, mode="post_quali"), use_container_width=True)
+  st.plotly_chart(accuracy_bars(metrics, mode="post_quali"), use_container_width=True, key="post_accuracy")
+  st.plotly_chart(log_loss_bars(metrics, mode="post_quali"), use_container_width=True, key="post_logloss")
   cal = post_test.get("test_post_quali_calibration", [])
   if cal:
     st.plotly_chart(calibration_chart(cal, "Post-quali calibration"), use_container_width=True)

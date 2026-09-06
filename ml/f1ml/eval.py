@@ -66,6 +66,20 @@ def race_softmax(scores: np.ndarray, temperature: float = 1.0) -> np.ndarray:
     return exp / total
 
 
+def binary_probs_to_logits(probs: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+    """Map independent binary P(win) to logits for race-level softmax."""
+    p = np.clip(probs.astype(float), eps, 1.0 - eps)
+    return np.log(p / (1.0 - p))
+
+
+def race_probs_from_binary(
+    binary_probs: np.ndarray, temperature: float = 1.0, eps: float = 1e-6
+) -> np.ndarray:
+    """Convert per-driver binary win probabilities to a race distribution summing to 1."""
+    logits = binary_probs_to_logits(binary_probs, eps=eps)
+    return race_softmax(logits, temperature=temperature)
+
+
 def race_log_loss(df: pd.DataFrame, probs: pd.Series, eps: float = 1e-15) -> float:
     """Multiclass log-loss: one winner per race."""
     losses = []
@@ -189,17 +203,24 @@ def champ_leader_probabilities(df: pd.DataFrame) -> pd.Series:
 
 
 def fit_temperature(
-    df: pd.DataFrame, raw_scores: pd.Series, grid: np.ndarray | None = None
+    df: pd.DataFrame,
+    raw_scores: pd.Series,
+    grid: np.ndarray | None = None,
+    *,
+    from_binary_probs: bool = True,
 ) -> float:
     """Find temperature minimizing race log-loss on validation data."""
     if grid is None:
-        grid = np.linspace(0.3, 3.0, 28)
+        grid = np.linspace(0.1, 2.0, 20)
     best_t, best_ll = 1.0, float("inf")
     for t in grid:
         probs = pd.Series(index=df.index, dtype=float)
         for g in race_groups(df):
-            s = raw_scores.loc[g.index].values
-            p = race_softmax(s, temperature=float(t))
+            s = raw_scores.loc[g.index].values.astype(float)
+            if from_binary_probs:
+                p = race_probs_from_binary(s, temperature=float(t))
+            else:
+                p = race_softmax(s, temperature=float(t))
             probs.loc[g.index] = p
         ll = race_log_loss(df, probs)
         if ll < best_ll:

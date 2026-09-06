@@ -15,7 +15,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from f1ml.eval import race_softmax
+from f1ml.eval import race_probs_from_binary, race_softmax
 from f1ml.specs import WeekendMode, feature_columns
 
 
@@ -84,10 +84,11 @@ def raw_win_scores(model: Pipeline, df: pd.DataFrame, mode: WeekendMode) -> np.n
 def apply_race_probs(
     df: pd.DataFrame, raw_scores: pd.Series, temperature: float = 1.0
 ) -> pd.Series:
+    """Convert independent binary P(win) to a race-level distribution via logit + softmax."""
     probs = pd.Series(0.0, index=df.index)
     for (_, _), g in df.groupby(["season", "round"], sort=False):
         s = raw_scores.loc[g.index].values.astype(float)
-        p = race_softmax(s, temperature=temperature)
+        p = race_probs_from_binary(s, temperature=temperature)
         probs.loc[g.index] = p
     return probs
 
@@ -137,6 +138,7 @@ class WeekendModels:
         finish_model: Pipeline,
         win_logreg: Pipeline | None = None,
         temperature: float = 1.0,
+        ranker_temperature: float = 1.0,
     ):
         self.mode = mode
         self.win_model = win_model
@@ -145,6 +147,7 @@ class WeekendModels:
         self.finish_model = finish_model
         self.win_logreg = win_logreg
         self.temperature = temperature
+        self.ranker_temperature = ranker_temperature
 
     def save(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
@@ -154,7 +157,10 @@ class WeekendModels:
         joblib.dump(self.finish_model, directory / "finish_hgb.joblib")
         if self.win_logreg is not None:
             joblib.dump(self.win_logreg, directory / "win_logreg.joblib")
-        joblib.dump({"temperature": self.temperature}, directory / "meta.joblib")
+        joblib.dump(
+            {"temperature": self.temperature, "ranker_temperature": self.ranker_temperature},
+            directory / "meta.joblib",
+        )
         numeric, categorical = feature_columns(self.mode)
         joblib.dump(
             {"numeric": numeric, "categorical": categorical, "mode": self.mode},
@@ -173,4 +179,5 @@ class WeekendModels:
             finish_model=joblib.load(directory / "finish_hgb.joblib"),
             win_logreg=joblib.load(logreg_path) if logreg_path.exists() else None,
             temperature=float(meta.get("temperature", 1.0)),
+            ranker_temperature=float(meta.get("ranker_temperature", 1.0)),
         )

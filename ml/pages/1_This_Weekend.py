@@ -33,7 +33,7 @@ scored = render_prediction_block(
 )
 
 st.subheader("Weekend markets")
-st.plotly_chart(market_comparison(scored), use_container_width=True)
+st.plotly_chart(market_comparison(scored, title="Top drivers"), use_container_width=True, key="weekend_markets")
 
 display_cols = [
   "given_name", "family_name", "constructor_name", "quali_position", "grid", "grid_vs_quali",

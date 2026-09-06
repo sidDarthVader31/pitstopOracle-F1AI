@@ -145,21 +145,32 @@ def render_accuracy_journal(n_races: int = 10) -> None:
     display = journal.copy()
     display["model_correct"] = display["model_correct"].map({True: "✓", False: "✗"})
     display["pole_correct"] = display["pole_correct"].map({True: "✓", False: "✗"})
-    st.dataframe(
-        display.rename(
-            columns={
-                "race": "Grand Prix",
-                "actual": "Winner",
-                "model_pick": "Model",
-                "pole_pick": "Pole",
-                "model_win_prob": "Win %",
-                "model_correct": "Model",
-                "pole_correct": "Pole",
-            }
-        ),
-        use_container_width=True,
-        hide_index=True,
+    view = display[
+        [
+            "season",
+            "round",
+            "race",
+            "actual",
+            "model_pick",
+            "pole_pick",
+            "model_correct",
+            "pole_correct",
+            "model_top3",
+            "model_win_prob",
+        ]
+    ].rename(
+        columns={
+            "race": "Grand Prix",
+            "actual": "Winner",
+            "model_pick": "Model pick",
+            "pole_pick": "Pole pick",
+            "model_correct": "Model hit",
+            "pole_correct": "Pole hit",
+            "model_top3": "Top-3",
+            "model_win_prob": "Win %",
+        }
     )
+    st.dataframe(view, use_container_width=True, hide_index=True)
 
 
 def render_result_banner(scored: pd.DataFrame, race_df: pd.DataFrame) -> None:

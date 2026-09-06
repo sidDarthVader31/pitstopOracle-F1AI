@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 from f1ml.features import build_driver_race
 from f1ml.ingest import run as ingest_run
 from f1ml.paths import END_YEAR, START_YEAR
-from f1ml.train import train_and_eval
+from f1ml.train import recalibrate_temperatures, train_and_eval
 
 
 def main() -> None:
@@ -25,7 +25,17 @@ def main() -> None:
         action="store_true",
         help="Clear Jolpica disk cache for the ingest year range and re-fetch from API",
     )
+    p.add_argument(
+        "--recalibrate-only",
+        action="store_true",
+        help="Refit win-model temperature on existing joblibs (no retrain)",
+    )
     args = p.parse_args()
+
+    if args.recalibrate_only:
+        results = recalibrate_temperatures()
+        print("recalibrated temperatures:", results)
+        return
 
     if not args.skip_ingest:
         ingest_run(args.start_year, args.end_year, refresh=args.refresh)

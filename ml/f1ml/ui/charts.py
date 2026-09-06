@@ -24,10 +24,15 @@ CHART_LAYOUT_BASE = dict(
   paper_bgcolor="rgba(0,0,0,0)",
   plot_bgcolor="rgba(0,0,0,0)",
   font=dict(family="Inter, system-ui, sans-serif", color="#374151", size=13),
-  margin=dict(l=10, r=10, t=40, b=10),
+  margin=dict(l=10, r=10, t=48, b=72),
   xaxis=dict(gridcolor="#f3f4f6", linecolor="#e5e7eb", zerolinecolor="#e5e7eb"),
   yaxis=dict(gridcolor="#f3f4f6", linecolor="#e5e7eb", zerolinecolor="#e5e7eb"),
 )
+
+
+def _legend_below() -> dict:
+  """Horizontal legend below the plot — avoids overlapping Streamlit headings above."""
+  return dict(orientation="h", yanchor="top", y=-0.22, x=0.5, xanchor="center")
 
 
 def _layout(**overrides) -> dict:
@@ -119,7 +124,7 @@ def compare_scenarios(baseline: pd.DataFrame, scenario: pd.DataFrame, top_n: int
       barmode="group",
       title="Baseline vs scenario",
       yaxis_title="Win %",
-      legend=dict(orientation="h", yanchor="bottom", y=1.02),
+      legend=_legend_below(),
     )
   )
   return fig
@@ -164,7 +169,7 @@ def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
       title=f"Winner hit rate — {mode.replace('_', ' ')} (%)",
       yaxis_title="Correct winner %",
       yaxis=dict(range=[0, 100]),
-      legend=dict(orientation="h", yanchor="bottom", y=1.02),
+      legend=_legend_below(),
     )
   )
   return fig
@@ -210,6 +215,7 @@ def calibration_chart(bins: list[dict], title: str) -> go.Figure:
       xaxis_title="Predicted win %",
       yaxis_title="Actual win %",
       height=360,
+      legend=_legend_below(),
     )
   )
   return fig
@@ -238,7 +244,7 @@ def fantasy_pts_bar(scored: pd.DataFrame, top_n: int = 10) -> go.Figure:
   return fig
 
 
-def market_comparison(scored: pd.DataFrame, top_n: int = 8) -> go.Figure:
+def market_comparison(scored: pd.DataFrame, top_n: int = 8, *, title: str | None = None) -> go.Figure:
   data = scored.head(top_n).copy()
   data["driver"] = data.apply(_driver_label, axis=1)
   fig = go.Figure()
@@ -247,12 +253,12 @@ def market_comparison(scored: pd.DataFrame, top_n: int = 8) -> go.Figure:
     fig.add_trace(go.Bar(name="Podium %", x=data["driver"], y=data["podium_prob"] * 100, marker_color="#3671C6"))
   if "dnf_prob" in data.columns:
     fig.add_trace(go.Bar(name="DNF %", x=data["driver"], y=data["dnf_prob"] * 100, marker_color="#6b7280"))
-  fig.update_layout(
-    **_layout(
-      barmode="group",
-      title="Weekend markets (top drivers)",
-      yaxis_title="%",
-      legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    )
+  layout = dict(
+    barmode="group",
+    yaxis_title="%",
+    legend=_legend_below(),
   )
+  if title:
+    layout["title"] = title
+  fig.update_layout(**_layout(**layout))
   return fig
