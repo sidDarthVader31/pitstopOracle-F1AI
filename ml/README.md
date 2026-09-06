@@ -18,14 +18,24 @@ pip install -r requirements.txt
 | Command | Purpose |
 |---|---|
 | `python run_pipeline.py` | Ingest Jolpica data + train models |
+| `python run_pipeline.py --refresh` | Clear Jolpica cache for ingest years and re-fetch |
 | `python run_pipeline.py --skip-ingest` | Retrain from cached raw data |
 | `streamlit run app.py` | Launch dashboard |
-| `python predict_race.py --season 2026 --round 13` | CLI prediction for one GP |
+| `python predict_race.py --season 2026 --round 13` | CLI weekend card for one GP |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
 
-## Dashboard pages
+## Models (v2)
 
-See [docs/README.md](../docs/README.md#dashboard-tour) for screenshots.
+Two weekend modes, trained separately:
+
+| Mode | When | Features |
+|---|---|---|
+| `pre_quali` | Before qualifying | Form, standings, circuit history, weather |
+| `post_quali` | After qualifying | All of the above + quali, grid, sprint |
+
+Each mode trains gradient boosting heads for **win**, **podium**, **DNF**, and **expected finish**, with race-level softmax calibration for win probabilities.
+
+## Dashboard pages
 
 | Page | File |
 |---|---|
@@ -40,8 +50,10 @@ See [docs/README.md](../docs/README.md#dashboard-tour) for screenshots.
 |---|---|
 | `data/raw/*.parquet` | Races, results, qualifying, standings, weather |
 | `data/processed/driver_race.parquet` | Feature table (one row per driver per race) |
-| `models/winner_rf.joblib` | Random forest classifier |
-| `reports/EVAL.md` | Evaluation vs pole baseline |
+| `models/pre_quali/` | Pre-quali model bundle |
+| `models/post_quali/` | Post-quali model bundle |
+| `reports/EVAL.md` | Evaluation vs baselines (log-loss, Brier, hit rate) |
+| `reports/metrics.json` | Full metrics for Model Performance page |
 
 ## Deploy (optional)
 

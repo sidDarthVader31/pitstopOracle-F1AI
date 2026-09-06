@@ -23,10 +23,12 @@ apply_theme()
 st.title("Pitstop Oracle")
 st.markdown(
   """
-  F1 race-winner probabilities from historical results (2022+).
+  F1 weekend forecasts from historical results (2022+): win, podium, DNF,
+  expected finish, and fantasy points.
 
-  **Get started:** open **This Weekend** for the next Grand Prix prediction,
-  or explore past races, run what-if scenarios, and review model accuracy.
+  **Get started:** open **This Weekend** for the next Grand Prix card,
+  explore past races, run what-if scenarios in **Fantasy Lab**, and review
+  dual-mode model accuracy on **Model Performance**.
   """
 )
 st.sidebar.title("Pitstop Oracle")

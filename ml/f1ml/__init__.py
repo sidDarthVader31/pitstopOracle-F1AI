@@ -1,1 +1,1 @@
-"""F1 race-winner v1: ingest, features, train, evaluate."""
+"""F1 Oracle v2: ingest, features, dual-mode train, weekend card predictions."""

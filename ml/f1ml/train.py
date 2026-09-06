@@ -7,130 +7,170 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from f1ml.eval import (
+    calibration_bins,
+    champ_leader_probabilities,
+    equal_field_probabilities,
+    finish_mae,
+    fit_temperature,
+    pole_probabilities,
+    race_brier,
+    race_log_loss,
+    rank_correlation,
+    slice_metrics,
+    topk_hit_rate,
+    winner_hit_rate,
+    winner_hit_rate_probs,
+)
+from f1ml.modeling import (
+    WeekendModels,
+    apply_race_probs,
+    feature_matrix,
+    make_pipeline,
+    predict_binary_proba,
+    raw_win_scores,
+)
 from f1ml.paths import MODELS, PROCESSED, REPORTS
-
-FEATURE_NUM = [
-    "quali_position",
-    "grid",
-    "grid_vs_quali",
-    "best_quali_seconds",
-    "champ_position_before",
-    "champ_points_before",
-    "driver_id_points_last_3",
-    "driver_id_points_last_5",
-    "driver_id_avg_finish_last_5",
-    "driver_id_dnf_rate_last_5",
-    "constructor_id_points_last_3",
-    "constructor_id_points_last_5",
-    "constructor_id_avg_finish_last_5",
-    "constructor_id_dnf_rate_last_5",
-    "quali_vs_teammate",
-    "circuit_avg_finish_prior",
-    "is_wet",
-    "has_sprint",
-    "sprint_position",
-    "round",
-    "precipitation_mm",
-]
-FEATURE_CAT = ["constructor_id"]
-TRAIN_SEASONS = {2022, 2023, 2024}
+from f1ml.specs import TEST_SEASONS, TRAIN_SEASONS, WeekendMode, feature_columns, season_range_label
 
 
-def _race_key(df: pd.DataFrame) -> pd.Series:
-    return df["season"].astype(str) + "-" + df["round"].astype(str)
+def _load_training_frame() -> pd.DataFrame:
+    df = pd.read_parquet(PROCESSED / "driver_race.parquet")
+    has_winner = df.groupby(["season", "round"])["won"].transform("max") == 1
+    df = df[has_winner & df["position"].notna()].copy()
+    return df
 
 
-def pole_baseline(df: pd.DataFrame) -> pd.Series:
-    """Predict the pole sitter (best qualifying position) in each race."""
-    idx = df.groupby(["season", "round"])["quali_position"].idxmin()
-    pred = pd.Series(False, index=df.index)
-    pred.loc[idx] = True
-    return pred
+def _split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    train = df[df["season"].isin(TRAIN_SEASONS)].copy()
+    test = df[df["season"].isin(TEST_SEASONS)].copy()
+    return train, test
 
 
-def champ_leader_baseline(df: pd.DataFrame) -> pd.Series:
-    """Championship leader before the race; round 1 falls back to pole."""
-    pred = pd.Series(False, index=df.index)
-    for (_, _), g in df.groupby(["season", "round"]):
-        if g["champ_points_before"].fillna(0).sum() == 0:
-            pick = g["quali_position"].idxmin()
-        else:
-            pick = g["champ_position_before"].idxmin()
-        pred.loc[pick] = True
-    return pred
-
-
-def winner_hit_rate(df: pd.DataFrame, picked: pd.Series) -> float:
-    hits = 0
-    n = 0
-    for _, g in df.groupby(_race_key(df)):
-        n += 1
-        winner_idx = g.index[g["won"] == 1]
-        if len(winner_idx) == 0:
-            continue
-        if bool(picked.loc[winner_idx].any()):
-            hits += 1
-    return hits / n if n else 0.0
-
-
-def topk_hit_rate(df: pd.DataFrame, scores: pd.Series, k: int = 3) -> float:
-    hits = 0
-    n = 0
-    for _, g in df.groupby(["season", "round"]):
-        n += 1
-        winner = g.index[g["won"] == 1]
-        if len(winner) == 0:
-            continue
-        top = scores.loc[g.index].nlargest(k)
-        if winner[0] in top.index:
-            hits += 1
-    return hits / n if n else 0.0
-
-
-def _pipeline(kind: str) -> Pipeline:
-    num_steps: list = [("impute", SimpleImputer(strategy="median"))]
-    if kind == "logreg":
-        num_steps.append(("scale", StandardScaler()))
-    num = Pipeline(steps=num_steps)
-    cat = Pipeline(
-        steps=[
-            ("impute", SimpleImputer(strategy="most_frequent")),
-            ("onehot", OneHotEncoder(handle_unknown="ignore")),
-        ]
-    )
-    pre = ColumnTransformer(
-        [("num", num, FEATURE_NUM), ("cat", cat, FEATURE_CAT)]
-    )
-    if kind == "logreg":
-        clf = LogisticRegression(max_iter=1000, class_weight="balanced")
-    else:
-        clf = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=8,
-            min_samples_leaf=5,
-            class_weight="balanced_subsample",
-            random_state=42,
-            n_jobs=-1,
+def _walk_forward_seasons(df: pd.DataFrame) -> list[dict]:
+    seasons = sorted(df["season"].unique())
+    folds = []
+    for i in range(2, len(seasons)):
+        train_seasons = set(seasons[:i])
+        test_season = seasons[i]
+        folds.append(
+            {
+                "train": df[df["season"].isin(train_seasons)],
+                "test": df[df["season"] == test_season],
+                "test_season": int(test_season),
+            }
         )
-    return Pipeline([("pre", pre), ("clf", clf)])
+    return folds
+
+
+def _pole_baseline_hit(df: pd.DataFrame) -> float:
+    probs = pole_probabilities(df)
+    return winner_hit_rate(df, probs)
+
+
+def _champ_baseline_hit(df: pd.DataFrame) -> float:
+    probs = champ_leader_probabilities(df)
+    return winner_hit_rate(df, probs)
+
+
+def _equal_baseline_hit(df: pd.DataFrame) -> float:
+    probs = equal_field_probabilities(df)
+    return winner_hit_rate_probs(df, probs)
+
+
+def _train_mode_models(
+    train: pd.DataFrame,
+    mode: WeekendMode,
+    val: pd.DataFrame | None = None,
+) -> WeekendModels:
+    numeric, categorical = feature_columns(mode)
+    cols = numeric + categorical
+
+    win_pipe = make_pipeline("hgb", numeric, categorical)
+    podium_pipe = make_pipeline("hgb", numeric, categorical)
+    dnf_pipe = make_pipeline("hgb", numeric, categorical)
+    finish_pipe = make_pipeline("finish", numeric, categorical)
+    logreg_pipe = make_pipeline("logreg", numeric, categorical)
+
+    X_train = train[cols]
+    win_pipe.fit(X_train, train["won"])
+    podium_pipe.fit(X_train, train["podium"])
+    dnf_pipe.fit(X_train, train["dnf"])
+    finish_pipe.fit(X_train, train["position"].astype(float))
+    logreg_pipe.fit(X_train, train["won"])
+
+    temperature = 1.0
+    cal_df = val if val is not None and len(val) else train
+    raw = pd.Series(raw_win_scores(win_pipe, cal_df, mode), index=cal_df.index)
+    temperature = fit_temperature(cal_df, raw)
+
+    return WeekendModels(
+        mode=mode,
+        win_model=win_pipe,
+        podium_model=podium_pipe,
+        dnf_model=dnf_pipe,
+        finish_model=finish_pipe,
+        win_logreg=logreg_pipe,
+        temperature=temperature,
+    )
+
+
+def _score_bundle(df: pd.DataFrame, bundle: WeekendModels) -> pd.DataFrame:
+    mode = bundle.mode
+    out = df.copy()
+    raw = pd.Series(raw_win_scores(bundle.win_model, df, mode), index=df.index)
+    out["win_prob_raw"] = raw
+    out["win_prob"] = apply_race_probs(df, raw, temperature=bundle.temperature)
+    out["podium_prob"] = predict_binary_proba(bundle.podium_model, df, mode)
+    out["dnf_prob"] = predict_binary_proba(bundle.dnf_model, df, mode)
+    out["expected_finish"] = bundle.finish_model.predict(feature_matrix(df, mode))
+    out["model_pick"] = out["win_prob"] == out["win_prob"].max()
+    return out
+
+
+def _eval_mode(
+    df: pd.DataFrame,
+    bundle: WeekendModels,
+    prefix: str,
+) -> dict:
+    scored = _score_bundle(df, bundle)
+    probs = scored["win_prob"]
+    raw = scored["win_prob_raw"]
+    metrics: dict = {
+        f"{prefix}_hit": winner_hit_rate(df, probs),
+        f"{prefix}_top3": topk_hit_rate(df, probs, k=3),
+        f"{prefix}_log_loss": race_log_loss(df, probs),
+        f"{prefix}_brier": race_brier(df, probs),
+        f"{prefix}_rank_corr": rank_correlation(df, raw),
+        f"{prefix}_finish_mae": finish_mae(df, scored["expected_finish"]),
+        f"{prefix}_calibration": calibration_bins(df, probs),
+    }
+    metrics.update({f"{prefix}_{k}": v for k, v in slice_metrics(df, probs, probs).items()})
+    return metrics
+
+
+def _eval_baselines(df: pd.DataFrame, prefix: str, include_pole: bool = True) -> dict:
+    out = {
+        f"{prefix}_equal_hit": _equal_baseline_hit(df),
+        f"{prefix}_champ_hit": _champ_baseline_hit(df),
+        f"{prefix}_equal_log_loss": race_log_loss(df, equal_field_probabilities(df)),
+        f"{prefix}_champ_log_loss": race_log_loss(df, champ_leader_probabilities(df)),
+    }
+    if include_pole:
+        pole_p = pole_probabilities(df)
+        out[f"{prefix}_pole_hit"] = winner_hit_rate(df, pole_p)
+        out[f"{prefix}_pole_log_loss"] = race_log_loss(df, pole_p)
+        out[f"{prefix}_pole_brier"] = race_brier(df, pole_p)
+    return out
 
 
 def _eda(df: pd.DataFrame) -> dict:
     REPORTS.mkdir(parents=True, exist_ok=True)
-    pole = pole_baseline(df)
-    pole_rate = winner_hit_rate(df, pole)
+    pole_rate = _pole_baseline_hit(df)
     wet_races = df.groupby(["season", "round"])["is_wet"].max()
-    dnf_by_team = (
-        df.groupby("constructor_name")["dnf"].mean().sort_values(ascending=False)
-    )
 
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.bar(["Pole wins"], [pole_rate])
@@ -141,6 +181,7 @@ def _eda(df: pd.DataFrame) -> dict:
     fig.savefig(REPORTS / "pole_win_rate.png", dpi=120)
     plt.close(fig)
 
+    dnf_by_team = df.groupby("constructor_name")["dnf"].mean().sort_values(ascending=False)
     fig, ax = plt.subplots(figsize=(8, 4))
     dnf_by_team.plot(kind="bar", ax=ax)
     ax.set_ylabel("DNF rate")
@@ -158,97 +199,150 @@ def _eda(df: pd.DataFrame) -> dict:
     }
 
 
-def train_and_eval() -> dict:
-    df = pd.read_parquet(PROCESSED / "driver_race.parquet")
-    df = df[df["position"].notna() | (df["won"] == 0)].copy()
-    # Keep races that have a winner label.
-    has_winner = df.groupby(["season", "round"])["won"].transform("max") == 1
-    df = df[has_winner].copy()
-
-    eda = _eda(df)
-    train = df[df["season"].isin(TRAIN_SEASONS)].copy()
-    test = df[~df["season"].isin(TRAIN_SEASONS)].copy()
-
-    metrics: dict = {"eda": eda, "train_races": int(train.groupby(["season", "round"]).ngroups),
-                     "test_races": int(test.groupby(["season", "round"]).ngroups)}
-
-    for split_name, split in [("train", train), ("test", test)]:
-        pole = pole_baseline(split)
-        champ = champ_leader_baseline(split)
-        metrics[f"{split_name}_pole_hit"] = winner_hit_rate(split, pole)
-        metrics[f"{split_name}_champ_hit"] = winner_hit_rate(split, champ)
-
-    X_train = train[FEATURE_NUM + FEATURE_CAT]
-    y_train = train["won"]
-    X_test = test[FEATURE_NUM + FEATURE_CAT]
-    models = {}
-    for kind in ("logreg", "rf"):
-        pipe = _pipeline(kind)
-        pipe.fit(X_train, y_train)
-        models[kind] = pipe
-        for split_name, split, X in (("train", train, X_train), ("test", test, X_test)):
-            proba = pipe.predict_proba(X)[:, 1]
-            scores = pd.Series(proba, index=split.index)
-            picked = pd.Series(False, index=split.index)
-            for _, g in split.groupby(["season", "round"]):
-                picked.loc[scores.loc[g.index].idxmax()] = True
-            metrics[f"{split_name}_{kind}_hit"] = winner_hit_rate(split, picked)
-            metrics[f"{split_name}_{kind}_top3"] = topk_hit_rate(split, scores, k=3)
-
-    MODELS.mkdir(parents=True, exist_ok=True)
-    joblib.dump(models["rf"], MODELS / "winner_rf.joblib")
-    joblib.dump(models["logreg"], MODELS / "winner_logreg.joblib")
-    joblib.dump({"numeric": FEATURE_NUM, "categorical": FEATURE_CAT}, MODELS / "features.joblib")
-
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2))
-    _write_eval_md(metrics, test, models["rf"])
-    return metrics
-
-
-def _write_eval_md(metrics: dict, test: pd.DataFrame, rf: Pipeline) -> None:
-    beat = metrics["test_rf_hit"] > metrics["test_pole_hit"]
+def _write_eval_md(metrics: dict) -> None:
+    pre_test = metrics.get("test_pre_quali", {})
+    post_test = metrics.get("test_post_quali", {})
+    train_label = season_range_label(TRAIN_SEASONS)
+    test_label = season_range_label(TEST_SEASONS)
+    split_line = (
+        f"Time split: **train {train_label}**, **test {test_label}**."
+        if TEST_SEASONS
+        else f"Time split: **train {train_label}** (no held-out test; walk-forward below)."
+    )
     lines = [
-        "# F1 winner model — evaluation",
+        "# F1 Oracle — evaluation (v2)",
         "",
-        "Time split: **train 2022–2024**, **test 2025–2026** (held-out later seasons).",
+        split_line,
+        "Separate **pre-quali** and **post-quali** models with race-level softmax calibration.",
         "",
         "## Dataset",
         "",
-        f"- Rows (driver-race): {metrics['eda']['n_rows']}",
-        f"- Races: {metrics['eda']['n_races']} (train {metrics['train_races']}, test {metrics['test_races']})",
-        f"- Pole sitter win rate (all data): **{metrics['eda']['pole_win_rate']:.1%}**",
-        f"- Wet races (daily precipitation ≥ 1 mm): {metrics['eda']['wet_race_share']:.1%}",
-        f"- Overall DNF rate: {metrics['eda']['overall_dnf_rate']:.1%}",
+        f"- Rows: {metrics['eda']['n_rows']}",
+        f"- Races: {metrics['eda']['n_races']}",
+        f"- Pole win rate: **{metrics['eda']['pole_win_rate']:.1%}**",
         "",
-        "See `pole_win_rate.png` and `dnf_by_constructor.png`.",
+    ]
+    if TEST_SEASONS:
+        lines += [
+            "## Pre-quali model (test)",
+            "",
+            "| Metric | Oracle | Equal field | Champ leader |",
+            "|---|---:|---:|---:|",
+            f"| Winner hit | {pre_test.get('test_pre_quali_hit', 0):.1%} | {pre_test.get('test_pre_quali_equal_hit', 0):.1%} | {pre_test.get('test_pre_quali_champ_hit', 0):.1%} |",
+            f"| Log-loss | {pre_test.get('test_pre_quali_log_loss', 0):.3f} | {pre_test.get('test_pre_quali_equal_log_loss', 0):.3f} | {pre_test.get('test_pre_quali_champ_log_loss', 0):.3f} |",
+            f"| Brier | {pre_test.get('test_pre_quali_brier', 0):.3f} | — | — |",
+            f"| Rank corr | {pre_test.get('test_pre_quali_rank_corr', 0):.3f} | — | — |",
+            "",
+            "## Post-quali model (test)",
+            "",
+            "| Metric | Oracle | Pole | Champ leader |",
+            "|---|---:|---:|---:|",
+            f"| Winner hit | {post_test.get('test_post_quali_hit', 0):.1%} | {post_test.get('test_post_quali_pole_hit', 0):.1%} | {post_test.get('test_post_quali_champ_hit', 0):.1%} |",
+            f"| Log-loss | {post_test.get('test_post_quali_log_loss', 0):.3f} | {post_test.get('test_post_quali_pole_log_loss', 0):.3f} | {post_test.get('test_post_quali_champ_log_loss', 0):.3f} |",
+            f"| Brier | {post_test.get('test_post_quali_brier', 0):.3f} | {post_test.get('test_post_quali_pole_brier', 0):.3f} | — |",
+            f"| Top-3 hit | {post_test.get('test_post_quali_top3', 0):.1%} | — | — |",
+            "",
+        ]
+    lines += [
+        "## Walk-forward (by season)",
         "",
-        "## Winner hit rate (share of races where predicted winner is correct)",
+    ]
+    for fold in metrics.get("walk_forward", []):
+        lines.append(
+            f"- Season {fold['test_season']}: pre hit {fold.get('pre_hit', 0):.1%}, "
+            f"post hit {fold.get('post_hit', 0):.1%}, post log-loss {fold.get('post_log_loss', 0):.3f}"
+        )
+    lines += [
         "",
-        "| Method | Train | Test |",
-        "|---|---:|---:|",
-        f"| Baseline: pole | {metrics['train_pole_hit']:.1%} | {metrics['test_pole_hit']:.1%} |",
-        f"| Baseline: championship leader | {metrics['train_champ_hit']:.1%} | {metrics['test_champ_hit']:.1%} |",
-        f"| Logistic regression | {metrics['train_logreg_hit']:.1%} | {metrics['test_logreg_hit']:.1%} |",
-        f"| Random forest | {metrics['train_rf_hit']:.1%} | {metrics['test_rf_hit']:.1%} |",
-        "",
-        "## Top-3 (actual winner in model's top 3 probabilities)",
-        "",
-        f"- Train RF: {metrics['train_rf_top3']:.1%}",
-        f"- Test RF: {metrics['test_rf_top3']:.1%}",
-        f"- Train logreg: {metrics['train_logreg_top3']:.1%}",
-        f"- Test logreg: {metrics['test_logreg_top3']:.1%}",
-        "",
-        "## Did ML beat pole?",
-        "",
-        (
-            f"Yes — test RF {metrics['test_rf_hit']:.1%} vs pole {metrics['test_pole_hit']:.1%}."
-            if beat
-            else f"Not on this split — test RF {metrics['test_rf_hit']:.1%} vs pole {metrics['test_pole_hit']:.1%}. "
-            "That is expected with ~20 races/year, DNFs, and qualifying already explaining most winners."
-        ),
-        "",
-        "Saved models: `ml/models/winner_rf.joblib`, `ml/models/winner_logreg.joblib`.",
+        "Models: `ml/models/pre_quali/`, `ml/models/post_quali/`.",
         "",
     ]
     (REPORTS / "EVAL.md").write_text("\n".join(lines))
+
+
+def train_and_eval() -> dict:
+    df = _load_training_frame()
+    eda = _eda(df)
+    train, test = _split(df)
+
+    # Post-quali needs quali data present.
+    train_post = train[train["quali_position"].notna()].copy()
+    test_post = test[test["quali_position"].notna()].copy()
+
+    pre_bundle = _train_mode_models(train, "pre_quali", val=test if len(test) else None)
+    post_bundle = _train_mode_models(train_post, "post_quali", val=test_post if len(test_post) else None)
+
+    MODELS.mkdir(parents=True, exist_ok=True)
+    pre_bundle.save(MODELS / "pre_quali")
+    post_bundle.save(MODELS / "post_quali")
+
+    # Legacy symlink-style artifacts for any old references.
+    joblib.dump(pre_bundle.win_model, MODELS / "winner_rf.joblib")
+    joblib.dump(pre_bundle.win_logreg, MODELS / "winner_logreg.joblib")
+    numeric_pre, cat_pre = feature_columns("pre_quali")
+    joblib.dump({"numeric": numeric_pre, "categorical": cat_pre}, MODELS / "features.joblib")
+
+    metrics: dict = {
+        "eda": eda,
+        "train_races": int(train.groupby(["season", "round"]).ngroups),
+        "test_races": int(test.groupby(["season", "round"]).ngroups),
+        "pre_quali_temperature": pre_bundle.temperature,
+        "post_quali_temperature": post_bundle.temperature,
+    }
+
+    for split_name, split in [("train", train), ("test", test)]:
+        if split.empty:
+            continue
+        pre_m = _eval_mode(split, pre_bundle, f"{split_name}_pre_quali")
+        pre_b = _eval_baselines(split, f"{split_name}_pre_quali", include_pole=False)
+        metrics[f"{split_name}_pre_quali"] = {**pre_m, **pre_b}
+
+    for split_name, split in [("train", train_post), ("test", test_post)]:
+        if split.empty:
+            continue
+        post_m = _eval_mode(split, post_bundle, f"{split_name}_post_quali")
+        post_b = _eval_baselines(split, f"{split_name}_post_quali", include_pole=True)
+        metrics[f"{split_name}_post_quali"] = {**post_m, **post_b}
+
+    # Walk-forward validation.
+    wf_results = []
+    for fold in _walk_forward_seasons(df):
+        tr = fold["train"]
+        te = fold["test"]
+        tr_post = tr[tr["quali_position"].notna()]
+        te_post = te[te["quali_position"].notna()]
+        if te.empty:
+            continue
+        pre_f = _train_mode_models(tr, "pre_quali")
+        post_f = _train_mode_models(tr_post, "post_quali") if len(tr_post) else None
+        pre_scored = _score_bundle(te, pre_f)
+        wf_row = {
+            "test_season": fold["test_season"],
+            "pre_hit": winner_hit_rate(te, pre_scored["win_prob"]),
+            "pre_log_loss": race_log_loss(te, pre_scored["win_prob"]),
+        }
+        if post_f is not None and len(te_post):
+            post_scored = _score_bundle(te_post, post_f)
+            wf_row["post_hit"] = winner_hit_rate(te_post, post_scored["win_prob"])
+            wf_row["post_log_loss"] = race_log_loss(te_post, post_scored["win_prob"])
+        wf_results.append(wf_row)
+    metrics["walk_forward"] = wf_results
+
+    # Back-compat keys for old UI until updated.
+    test_post_m = metrics.get("test_post_quali", {})
+    metrics["test_pole_hit"] = test_post_m.get("test_post_quali_pole_hit", 0)
+    metrics["test_champ_hit"] = test_post_m.get("test_post_quali_champ_hit", 0)
+    metrics["test_rf_hit"] = test_post_m.get("test_post_quali_hit", 0)
+    metrics["test_logreg_hit"] = metrics["test_rf_hit"]
+    metrics["test_rf_top3"] = test_post_m.get("test_post_quali_top3", 0)
+    metrics["train_pole_hit"] = metrics.get("train_post_quali", {}).get("train_post_quali_pole_hit", 0)
+    metrics["train_champ_hit"] = metrics.get("train_post_quali", {}).get("train_post_quali_champ_hit", 0)
+    metrics["train_rf_hit"] = metrics.get("train_post_quali", {}).get("train_post_quali_hit", 0)
+    metrics["train_logreg_hit"] = metrics["train_rf_hit"]
+    metrics["train_rf_top3"] = metrics.get("train_post_quali", {}).get("train_post_quali_top3", 0)
+    metrics["test_logreg_top3"] = metrics["test_rf_top3"]
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
+    _write_eval_md(metrics)
+    return metrics

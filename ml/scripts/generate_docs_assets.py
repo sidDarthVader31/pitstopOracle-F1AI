@@ -56,7 +56,7 @@ def export_fantasy_lab() -> None:
 
 def export_model_performance() -> None:
   metrics = load_metrics()
-  fig = accuracy_bars(metrics)
+  fig = accuracy_bars(metrics, mode="post_quali")
   _save(fig, SCREENSHOTS / "model-performance.png")
 
 

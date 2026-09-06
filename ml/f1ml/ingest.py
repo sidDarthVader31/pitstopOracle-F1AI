@@ -9,7 +9,13 @@ import requests
 
 from datetime import date
 
-from f1ml.jolpica import fetch_paginated, get_json
+from f1ml.jolpica import (
+    clear_bypass_cache_seasons,
+    clear_season_caches,
+    fetch_paginated,
+    get_json,
+    set_bypass_cache_seasons,
+)
 from f1ml.paths import CACHE, END_YEAR, OPEN_METEO, RAW, START_YEAR
 
 _WEATHER = requests.Session()
@@ -232,9 +238,18 @@ def ingest_weather(races: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def run(start_year: int = START_YEAR, end_year: int = END_YEAR) -> None:
+def run(
+    start_year: int = START_YEAR,
+    end_year: int = END_YEAR,
+    *,
+    refresh: bool = False,
+) -> None:
     RAW.mkdir(parents=True, exist_ok=True)
     years = range(start_year, end_year + 1)
+    if refresh:
+        removed = clear_season_caches(years)
+        set_bypass_cache_seasons(set(years))
+        print(f"refresh: cleared {removed} cached Jolpica responses for {start_year}–{end_year}")
     races = ingest_races(years)
     results = ingest_results(years)
     quali = ingest_qualifying(years)
@@ -249,5 +264,6 @@ def run(start_year: int = START_YEAR, end_year: int = END_YEAR) -> None:
     standings.to_parquet(RAW / "standings.parquet", index=False)
     weather.to_parquet(RAW / "weather.parquet", index=False)
 
+    clear_bypass_cache_seasons()
     print(f"races={len(races)} results={len(results)} quali={len(quali)} "
           f"sprints={len(sprints)} standings={len(standings)} weather={len(weather)}")

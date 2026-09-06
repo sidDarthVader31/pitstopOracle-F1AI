@@ -47,9 +47,19 @@ render_result_banner(scored, race_df)
 view = scored.copy()
 view["Driver"] = view["given_name"] + " " + view["family_name"]
 view["Win %"] = (view["win_prob"] * 100).round(1)
+if "podium_prob" in view.columns:
+  view["Podium %"] = (view["podium_prob"] * 100).round(1)
+if "dnf_prob" in view.columns:
+  view["DNF %"] = (view["dnf_prob"] * 100).round(1)
+if "expected_fantasy_pts" in view.columns:
+  view["Fantasy"] = view["expected_fantasy_pts"].round(1)
 view["Won"] = view["won"].map({1: "Yes", 0: ""})
+cols = ["Driver", "constructor_name", "quali_position", "grid", "Win %"]
+for c in ("Podium %", "DNF %", "Fantasy", "Won"):
+  if c in view.columns:
+    cols.append(c)
 st.dataframe(
-  view[["Driver", "constructor_name", "quali_position", "grid", "Win %", "Won"]].rename(
+  view[cols].rename(
     columns={
       "constructor_name": "Team",
       "quali_position": "Quali",

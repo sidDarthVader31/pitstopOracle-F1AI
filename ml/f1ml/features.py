@@ -115,6 +115,7 @@ def build_driver_race() -> pd.DataFrame:
 
     df["dnf"] = (~df["status"].map(_is_classified)).astype(int)
     df["won"] = (df["position"] == 1).astype(int)
+    df["points_finish"] = (df["position"] <= 10).astype(int)
     df["podium"] = df["position"].isin([1, 2, 3]).astype(int)
     df["has_sprint"] = df["sprint_position"].notna().astype(int)
     df["grid"] = df["grid"].replace(0, np.nan)  # 0 = pit lane / did not start from grid in Ergast
@@ -163,6 +164,26 @@ def build_driver_race() -> pd.DataFrame:
     )
     df["quali_vs_teammate"] = df["quali_position"] - teammate_quali
 
+    # Teammate qualifying H2H win rate (shifted rolling).
+    df = df.sort_values(["season", "round", "driver_id"]).reset_index(drop=True)
+    df["beat_teammate_quali"] = (
+        df["quali_vs_teammate"] < 0
+    ).astype(float)
+    df.loc[df["quali_position"].isna(), "beat_teammate_quali"] = np.nan
+    df["teammate_quali_h2h_rate"] = (
+        df.groupby("driver_id", sort=False)["beat_teammate_quali"]
+        .transform(lambda s: s.shift(1).rolling(5, min_periods=1).mean())
+    )
+
+    # Circuit overtaking proxy: historical mean (grid - finish) at circuit.
+    df = df.sort_values(["date", "season", "round"])
+    df["grid_finish_delta"] = df["grid"] - df["position"]
+    circuit_overtake = (
+        df.groupby("circuit_id")["grid_finish_delta"]
+        .transform(lambda s: s.shift(1).expanding(min_periods=3).mean())
+    )
+    df["circuit_grid_to_finish_delta"] = circuit_overtake.fillna(0.0)
+
     # Prior results at this circuit (exclude current race).
     df = df.sort_values(["date", "season", "round"])
     df["circuit_avg_finish_prior"] = (
@@ -191,6 +212,8 @@ def build_driver_race() -> pd.DataFrame:
         "quali_vs_teammate",
         "grid_vs_quali",
         "circuit_avg_finish_prior",
+        "circuit_grid_to_finish_delta",
+        "teammate_quali_h2h_rate",
         "precipitation_mm",
     ]
     for col in numeric_fill:

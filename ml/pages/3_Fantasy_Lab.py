@@ -1,4 +1,4 @@
-"""Fantasy Lab — what-if rain and grid penalties."""
+"""Fantasy Lab — what-if scenarios with expected fantasy points."""
 from __future__ import annotations
 
 import sys
@@ -10,15 +10,16 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from f1ml.fantasy import constructor_fantasy_points, oracle_xi
 from f1ml.predict import (
   apply_what_if,
   list_calendar_races,
   model_pick,
   next_upcoming_race,
   resolve_race_features,
-  score_race,
+  weekend_card,
 )
-from f1ml.ui.charts import compare_scenarios, win_prob_bar
+from f1ml.ui.charts import compare_scenarios, fantasy_pts_bar, win_prob_bar
 from f1ml.ui.components import sidebar_model_controls
 from f1ml.ui.theme import apply_theme, disclaimer_footer
 
@@ -26,7 +27,7 @@ st.set_page_config(page_title="Fantasy Lab | Pitstop Oracle", layout="wide")
 apply_theme()
 
 st.title("Fantasy Lab")
-st.caption("Toggle rain or grid penalties and see how win probabilities shift.")
+st.caption("What-if rain or grid penalties — see win % and expected fantasy points shift.")
 
 cal = list_calendar_races()
 default_season, default_round = next_upcoming_race()
@@ -43,7 +44,9 @@ meta = cal[cal["label"] == picked_label].iloc[0]
 season, round_num = int(meta["season"]), int(meta["round"])
 
 race_df, mode = resolve_race_features(season, round_num)
-baseline_scored = score_race(race_df, kind=model_kind, normalize=normalize)
+baseline_scored = weekend_card(race_df, race_mode=mode, kind=model_kind)
+if not normalize:
+  baseline_scored["win_prob"] = baseline_scored["win_prob_raw"]
 
 st.subheader(meta["race_name"])
 col1, col2 = st.columns(2)
@@ -74,20 +77,52 @@ scenario_df = apply_what_if(
   is_wet=is_wet,
   grid_overrides=grid_overrides or None,
 )
-scenario_scored = score_race(scenario_df, kind=model_kind, normalize=normalize)
+scenario_scored = weekend_card(scenario_df, race_mode=mode, kind=model_kind)
+if not normalize:
+  scenario_scored["win_prob"] = scenario_scored["win_prob_raw"]
 
 b_pick = model_pick(baseline_scored)
 s_pick = model_pick(scenario_scored)
-c1, c2 = st.columns(2)
+c1, c2, c3, c4 = st.columns(4)
 c1.metric("Baseline pick", b_pick["driver_name"], f"{b_pick['win_prob'] * 100:.1f}%")
 c2.metric("Scenario pick", s_pick["driver_name"], f"{s_pick['win_prob'] * 100:.1f}%")
+b_fant = baseline_scored.loc[baseline_scored["driver_id"] == b_pick["driver_id"], "expected_fantasy_pts"]
+s_fant = scenario_scored.loc[scenario_scored["driver_id"] == s_pick["driver_id"], "expected_fantasy_pts"]
+c3.metric("Baseline fantasy pts", f"{b_fant.iloc[0]:.1f}" if len(b_fant) else "—")
+c4.metric("Scenario fantasy pts", f"{s_fant.iloc[0]:.1f}" if len(s_fant) else "—")
 
 st.plotly_chart(compare_scenarios(baseline_scored, scenario_scored), use_container_width=True)
 
-tab1, tab2 = st.tabs(["Baseline", "Scenario"])
+tab1, tab2, tab3 = st.tabs(["Win %", "Fantasy points", "Oracle XI"])
 with tab1:
-  st.plotly_chart(win_prob_bar(baseline_scored), use_container_width=True)
+  col_a, col_b = st.columns(2)
+  with col_a:
+    st.plotly_chart(win_prob_bar(baseline_scored), use_container_width=True)
+  with col_b:
+    st.plotly_chart(win_prob_bar(scenario_scored), use_container_width=True)
 with tab2:
-  st.plotly_chart(win_prob_bar(scenario_scored), use_container_width=True)
+  col_a, col_b = st.columns(2)
+  with col_a:
+    st.plotly_chart(fantasy_pts_bar(baseline_scored), use_container_width=True)
+  with col_b:
+    st.plotly_chart(fantasy_pts_bar(scenario_scored), use_container_width=True)
+with tab3:
+  st.markdown("**Baseline Oracle XI** (greedy value picks)")
+  st.dataframe(oracle_xi(baseline_scored), use_container_width=True, hide_index=True)
+  st.markdown("**Scenario Oracle XI**")
+  st.dataframe(oracle_xi(scenario_scored), use_container_width=True, hide_index=True)
+
+st.subheader("Constructor expected points")
+c_base = constructor_fantasy_points(baseline_scored)
+c_scen = constructor_fantasy_points(scenario_scored)
+st.dataframe(
+  c_base.merge(
+    c_scen[["constructor_id", "expected_fantasy_pts"]],
+    on="constructor_id",
+    suffixes=("_baseline", "_scenario"),
+  ).rename(columns={"constructor_name": "Team"}),
+  use_container_width=True,
+  hide_index=True,
+)
 
 disclaimer_footer()
