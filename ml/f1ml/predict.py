@@ -10,9 +10,11 @@ import numpy as np
 import pandas as pd
 
 from f1ml.fantasy import constructor_fantasy_points, expected_driver_fantasy_points, oracle_xi
-from f1ml.modeling import WeekendModels, apply_race_probs, feature_matrix, plackett_luce_win_probs, predict_binary_proba, raw_win_scores
+from f1ml.modeling import WeekendModels, apply_race_probs, feature_matrix, plackett_luce_win_probs, raw_win_scores
+from f1ml.ranking import WeekendRanker
 from f1ml.paths import MODELS, PROCESSED, RAW, REPORTS, CANONICAL
-from f1ml.specs import WeekendMode
+from f1ml.ratings import latest_ratings_before_round
+from f1ml.specs import ERA_RESET_YEAR, WeekendMode
 from f1ml.starting_grid import apply_grid_to_frame, grid_metadata, penalty_callouts
 
 ModelKind = Literal["hgb", "logreg", "lgbm", "rf"]  # lgbm/rf aliases for hgb
@@ -26,8 +28,8 @@ def load_driver_race() -> pd.DataFrame:
 
 
 @lru_cache(maxsize=2)
-def load_weekend_models(mode: WeekendMode) -> WeekendModels:
-    return WeekendModels.load(MODELS / mode)
+def load_weekend_models(mode: WeekendMode) -> WeekendRanker:
+    return WeekendRanker.load(MODELS / mode)
 
 
 @lru_cache(maxsize=1)
@@ -54,9 +56,7 @@ def inference_mode(race_mode: RaceMode) -> WeekendMode:
 def load_model(kind: ModelKind = "hgb") -> object:
     """Backward-compatible loader."""
     bundle = load_weekend_models("post_quali")
-    if kind == "logreg" and bundle.win_logreg is not None:
-        return bundle.win_logreg
-    return bundle.win_model
+    return bundle.ranker
 
 
 def list_races(df: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -416,8 +416,49 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
     out = _apply_upcoming_session_data(out, season, round_num, meta, champ_view)
     out = _merge_upcoming_fp_pace(out, season, round_num)
     out = _merge_upcoming_weather_forecast(out, season, round_num)
-    out["is_wet"] = 0
-    out["precipitation_mm"] = 0.0
+
+    rating_snap = latest_ratings_before_round(history, season, round_num)
+    if not rating_snap.empty:
+        out = out.drop(
+            columns=[
+                "car_pace_ewma",
+                "driver_skill_ewma",
+                "car_driver_combo",
+                "dnf_hazard_car",
+                "dnf_hazard_driver",
+                "dnf_hazard_combined",
+            ],
+            errors="ignore",
+        )
+        out = out.merge(rating_snap, on="driver_id", how="left", suffixes=("", "_rated"))
+        if "constructor_id_rated" in out.columns:
+            out["constructor_id"] = out["constructor_id"].fillna(out["constructor_id_rated"])
+            out = out.drop(columns=["constructor_id_rated"])
+    else:
+        out["car_pace_ewma"] = 0.0
+        out["driver_skill_ewma"] = 0.0
+        out["car_driver_combo"] = 0.0
+        out["dnf_hazard_car"] = 0.15
+        out["dnf_hazard_driver"] = 0.10
+        out["dnf_hazard_combined"] = 0.24
+
+    out["regs_era"] = 1 if season >= ERA_RESET_YEAR else 0
+    if out["quali_position"].notna().any():
+        pole = out["best_quali_seconds"].min()
+        out["quali_gap_s"] = out["best_quali_seconds"] - pole
+        out["quali_gap_to_median_s"] = out["best_quali_seconds"] - out["best_quali_seconds"].median()
+    else:
+        out["quali_gap_s"] = np.nan
+        out["quali_gap_to_median_s"] = np.nan
+
+    out["fp_best_delta"] = out.get("fp3_best_lap_delta", pd.Series(np.nan, index=out.index))
+    out["fp_best_delta"] = out["fp_best_delta"].fillna(out.get("fp2_best_lap_delta", np.nan))
+    out["fp_longrun_delta"] = out["fp_best_delta"]
+
+    if "is_wet" not in out.columns or out["is_wet"].isna().all():
+        out["is_wet"] = 0
+    if "precipitation_mm" not in out.columns or out["precipitation_mm"].isna().all():
+        out["precipitation_mm"] = 0.0
     out["position"] = np.nan
     out["won"] = 0
     out["podium"] = 0
@@ -457,28 +498,16 @@ def weekend_card(
 ) -> pd.DataFrame:
     """
     Full weekend forecast: win, podium, DNF, expected finish, fantasy points.
-    Automatically selects pre_quali vs post_quali model.
+    Uses Plackett-Luce distribution from a single pace ranker + DNF hazard.
     """
     mode_ui = race_mode or race_status(race_df)
     wmode = inference_mode(mode_ui)
     bundle = load_weekend_models(wmode)
 
-    if kind == "logreg" and bundle.win_logreg is not None:
-        win_model = bundle.win_logreg
-    else:
-        win_model = bundle.win_model
-
-    out = race_df.copy()
-    raw = pd.Series(raw_win_scores(win_model, race_df, wmode), index=race_df.index)
-    out["win_prob_raw"] = raw
-    out["win_prob"] = apply_race_probs(race_df, raw, temperature=bundle.temperature)
-    out["podium_prob"] = predict_binary_proba(bundle.podium_model, race_df, wmode)
-    out["dnf_prob"] = predict_binary_proba(bundle.dnf_model, race_df, wmode)
-    out["expected_finish"] = bundle.finish_model.predict(feature_matrix(race_df, wmode))
-    rank_probs = plackett_luce_win_probs(
-        race_df, out["expected_finish"], temperature=bundle.ranker_temperature
-    )
-    out["win_prob_ranker"] = rank_probs
+    scored = bundle.predict_frame(race_df)
+    out = scored.copy()
+    out["win_prob_raw"] = out["pace_score"]
+    out["win_prob_ranker"] = out.get("win_prob_softmax", out["win_prob"])
     out["expected_fantasy_pts"] = expected_driver_fantasy_points(out)
     out["model_pick"] = out["win_prob"] == out["win_prob"].max()
     out["inference_mode"] = wmode
@@ -636,6 +665,12 @@ def accuracy_journal(n_races: int = 12) -> pd.DataFrame:
 def driver_insight_bullets(row: pd.Series) -> list[str]:
     """Short explainability bullets for a driver forecast."""
     bullets: list[str] = []
+    car = row.get("car_pace_ewma")
+    if pd.notna(car):
+        bullets.append(f"Car pace rating: {car:+.2f}s vs pole")
+    drv = row.get("driver_skill_ewma")
+    if pd.notna(drv) and abs(float(drv)) > 0.05:
+        bullets.append(f"Driver skill vs teammate: {drv:+.2f}s")
     if pd.notna(row.get("grid")) and pd.notna(row.get("quali_position")):
         g, q = int(row["grid"]), int(row["quali_position"])
         if g != q:

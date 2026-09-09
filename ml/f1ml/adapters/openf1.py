@@ -1,4 +1,4 @@
-"""OpenF1 adapter — starting grid and practice pace."""
+"""OpenF1 adapter — starting grid, practice pace, and race pace."""
 
 from __future__ import annotations
 
@@ -10,12 +10,23 @@ import pandas as pd
 import requests
 
 from f1ml.adapters.base import SourceAdapter
-from f1ml.paths import CACHE, RAW
+from f1ml.paths import CACHE, CANONICAL, RAW
 from f1ml.schema.entities import CanonicalBundle, SessionResult, StartingGrid
 
 OPENF1_BASE = "https://api.openf1.org/v1"
 _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": "pitstopOracle-F1AI/1.0"})
+
+FP_SESSIONS = ("Practice 1", "Practice 2", "Practice 3", "FP1", "FP2", "FP3")
+PACE_SESSION_MAP = {
+    "Practice 1": "FP1",
+    "Practice 2": "FP2",
+    "Practice 3": "FP3",
+    "FP1": "FP1",
+    "FP2": "FP2",
+    "FP3": "FP3",
+    "Race": "Race",
+}
 
 
 def _get_json(path: str, params: dict[str, Any] | None = None) -> list[dict]:
@@ -52,7 +63,7 @@ def _driver_number_map(season: int) -> dict[int, str]:
     return mapping
 
 
-def _race_session_key(season: int, round_num: int) -> int | None:
+def _meeting_key_for_round(season: int, round_num: int) -> int | None:
     meetings = _get_json("meetings", {"year": season})
     if not meetings:
         return None
@@ -72,13 +83,64 @@ def _race_session_key(season: int, round_num: int) -> int | None:
             break
     if meeting_key is None and len(meetings) >= round_num:
         meeting_key = meetings[round_num - 1].get("meeting_key")
-    if meeting_key is None:
-        return None
-    sessions = _get_json("sessions", {"meeting_key": meeting_key})
-    for s in sessions:
-        if s.get("session_type") == "Race" or s.get("session_name") == "Race":
-            return int(s["session_key"])
-    return None
+    return int(meeting_key) if meeting_key is not None else None
+
+
+def _session_lap_stats(
+    session_key: int,
+    num_map: dict[int, str],
+    session_label: str,
+    season: int,
+    round_num: int,
+) -> list[SessionResult]:
+    laps = _get_json("laps", {"session_key": session_key})
+    if not laps:
+        return []
+    by_driver: dict[str, list[float]] = {}
+    for lap in laps:
+        dur = lap.get("lap_duration")
+        num = lap.get("driver_number")
+        if dur is None or num is None:
+            continue
+        driver_id = num_map.get(int(num))
+        if not driver_id:
+            continue
+        dur_f = float(dur)
+        if dur_f <= 0 or dur_f > 200:
+            continue
+        by_driver.setdefault(driver_id, []).append(dur_f)
+
+    results: list[SessionResult] = []
+    for driver_id, times in by_driver.items():
+        times_sorted = sorted(times)
+        best = times_sorted[0]
+        longrun = float(np_median(times_sorted[1:21])) if len(times_sorted) > 1 else best
+        results.append(
+            SessionResult(
+                season=season,
+                round=round_num,
+                driver_id=driver_id,
+                session_type=session_label,
+                best_lap_seconds=best,
+            )
+        )
+        # Store long-run as extra via session_type suffix in parquet writer.
+        results.append(
+            SessionResult(
+                season=season,
+                round=round_num,
+                driver_id=driver_id,
+                session_type=f"{session_label}_LONGRUN",
+                best_lap_seconds=longrun,
+            )
+        )
+    return results
+
+
+def np_median(vals: list[float]) -> float:
+    import numpy as np
+
+    return float(np.median(vals))
 
 
 class OpenF1Adapter(SourceAdapter):
@@ -98,11 +160,19 @@ class OpenF1Adapter(SourceAdapter):
                 rounds = []
         for rnd in rounds:
             bundle.starting_grids.extend(self._fetch_starting_grid(season, int(rnd)))
-            bundle.session_results.extend(self._fetch_fp_pace(season, int(rnd)))
+            bundle.session_results.extend(self._fetch_session_pace(season, int(rnd)))
         return bundle
 
     def _fetch_starting_grid(self, season: int, round_num: int) -> list[StartingGrid]:
-        session_key = _race_session_key(season, round_num)
+        meeting_key = _meeting_key_for_round(season, round_num)
+        if meeting_key is None:
+            return []
+        sessions = _get_json("sessions", {"meeting_key": meeting_key})
+        session_key = None
+        for s in sessions:
+            if s.get("session_type") == "Race" or s.get("session_name") == "Race":
+                session_key = int(s["session_key"])
+                break
         if session_key is None:
             return []
         rows = _get_json("starting_grid", {"session_key": session_key})
@@ -143,21 +213,8 @@ class OpenF1Adapter(SourceAdapter):
             for r in sub.dropna(subset=["quali_position"]).itertuples(index=False)
         }
 
-    def _fetch_fp_pace(self, season: int, round_num: int) -> list[SessionResult]:
-        """Best lap per driver from FP2/FP3 for pace features."""
-        meetings = _get_json("meetings", {"year": season})
-        if not meetings:
-            return []
-        races = pd.read_parquet(RAW / "races.parquet")
-        race_row = races[(races["season"] == season) & (races["round"] == round_num)]
-        if race_row.empty:
-            return []
-        country = str(race_row.iloc[0].get("country", ""))
-        meeting_key = None
-        for m in meetings:
-            if m.get("country_name") == country:
-                meeting_key = m.get("meeting_key")
-                break
+    def _fetch_session_pace(self, season: int, round_num: int) -> list[SessionResult]:
+        meeting_key = _meeting_key_for_round(season, round_num)
         if meeting_key is None:
             return []
         sessions = _get_json("sessions", {"meeting_key": meeting_key})
@@ -165,35 +222,93 @@ class OpenF1Adapter(SourceAdapter):
         results: list[SessionResult] = []
         for sess in sessions:
             stype = sess.get("session_name") or sess.get("session_type") or ""
-            if stype not in ("Practice 2", "Practice 3", "FP2", "FP3"):
+            label = PACE_SESSION_MAP.get(stype)
+            if label is None:
                 continue
             session_key = sess.get("session_key")
             if not session_key:
                 continue
-            laps = _get_json("laps", {"session_key": session_key})
-            if not laps:
-                continue
-            best_by_driver: dict[str, float] = {}
-            for lap in laps:
-                dur = lap.get("lap_duration")
-                num = lap.get("driver_number")
-                if dur is None or num is None:
-                    continue
-                driver_id = num_map.get(int(num))
-                if not driver_id:
-                    continue
-                dur_f = float(dur)
-                if driver_id not in best_by_driver or dur_f < best_by_driver[driver_id]:
-                    best_by_driver[driver_id] = dur_f
-            session_label = "FP3" if "3" in stype else "FP2"
-            for driver_id, best in best_by_driver.items():
-                results.append(
-                    SessionResult(
-                        season=season,
-                        round=round_num,
-                        driver_id=driver_id,
-                        session_type=session_label,
-                        best_lap_seconds=best,
-                    )
-                )
+            results.extend(
+                _session_lap_stats(int(session_key), num_map, label, season, round_num)
+            )
         return results
+
+
+def _session_results_to_frame(results: list[SessionResult]) -> pd.DataFrame:
+    rows = []
+    for r in results:
+        rows.append(
+            {
+                "season": r.season,
+                "round": r.round,
+                "driver_id": r.driver_id,
+                "session_type": r.session_type,
+                "best_lap_seconds": r.best_lap_seconds,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def backfill_fp_pace(
+    start_year: int,
+    end_year: int,
+    *,
+    max_rounds_per_season: int | None = None,
+    skip_existing: bool = True,
+) -> pd.DataFrame:
+    """Backfill FP/Race pace from OpenF1 for all completed rounds."""
+    races = pd.read_parquet(RAW / "races.parquet")
+    existing_path = CANONICAL / "fp_pace.parquet"
+    existing = pd.DataFrame()
+    if skip_existing and existing_path.exists():
+        existing = pd.read_parquet(existing_path)
+
+    adapter = OpenF1Adapter()
+    all_results: list[SessionResult] = []
+    for year in range(start_year, end_year + 1):
+        season_races = races[races["season"] == year].sort_values("round")
+        if max_rounds_per_season:
+            season_races = season_races.head(max_rounds_per_season)
+        for _, race in season_races.iterrows():
+            rnd = int(race["round"])
+            if skip_existing and not existing.empty:
+                have = existing[
+                    (existing["season"] == year)
+                    & (existing["round"] == rnd)
+                    & (existing["session_type"].isin(["FP2", "FP3", "Race"]))
+                ]
+                if len(have) >= 10:
+                    continue
+            print(f"OpenF1 pace: {year} R{rnd:02d} ...")
+            all_results.extend(adapter._fetch_session_pace(year, rnd))
+
+    new_df = _session_results_to_frame(all_results)
+    if existing.empty:
+        merged = new_df
+    elif new_df.empty:
+        merged = existing
+    else:
+        merged = pd.concat([existing, new_df], ignore_index=True)
+        merged = merged.drop_duplicates(
+            ["season", "round", "driver_id", "session_type"], keep="last"
+        )
+    CANONICAL.mkdir(parents=True, exist_ok=True)
+    merged.to_parquet(existing_path, index=False)
+    return merged
+
+
+def write_fp_pace_from_bundle(bundle: CanonicalBundle) -> None:
+    if not bundle.session_results:
+        return
+    path = CANONICAL / "fp_pace.parquet"
+    new_df = _session_results_to_frame(bundle.session_results)
+    if path.exists():
+        existing = pd.read_parquet(path)
+        merged = pd.concat([existing, new_df], ignore_index=True)
+        merged = merged.drop_duplicates(
+            ["season", "round", "driver_id", "session_type"], keep="last"
+        )
+    else:
+        merged = new_df
+    CANONICAL.mkdir(parents=True, exist_ok=True)
+    merged.to_parquet(path, index=False)

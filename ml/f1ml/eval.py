@@ -164,6 +164,25 @@ def calibration_bins(
     return out
 
 
+def quali_gap_probabilities(df: pd.DataFrame, temperature: float = 0.5) -> pd.Series:
+    """Softmax on negative quali gap in seconds (better quali => higher prob)."""
+    probs = pd.Series(0.0, index=df.index)
+    for g in race_groups(df):
+        if "quali_gap_s" in g.columns and g["quali_gap_s"].notna().any():
+            gaps = g["quali_gap_s"].fillna(g["quali_gap_s"].max() + 5.0).astype(float)
+            scores = -gaps.values
+        elif g["quali_position"].notna().any():
+            pos = g["quali_position"].fillna(g["quali_position"].max() + 5).astype(float)
+            scores = -pos.values
+        else:
+            n = len(g)
+            probs.loc[g.index] = 1.0 / n if n else 0.0
+            continue
+        p = race_softmax(scores, temperature=temperature)
+        probs.loc[g.index] = p
+    return probs
+
+
 def pole_probabilities(df: pd.DataFrame) -> pd.Series:
     """One-hot pole sitter as probability distribution per race."""
     probs = pd.Series(0.0, index=df.index)
@@ -248,3 +267,29 @@ def slice_metrics(
         out[f"{label}_log_loss"] = race_log_loss(sub, sub_probs)
         out[f"{label}_hit"] = winner_hit_rate(sub, sub_scores)
     return out
+
+
+def slice_disagree_with_pole(df: pd.DataFrame, probs: pd.Series) -> dict:
+    """Metrics on races where model top pick differs from pole sitter."""
+    parts: list[pd.DataFrame] = []
+    prob_parts: list[pd.Series] = []
+    for g in race_groups(df):
+        valid = g.dropna(subset=["quali_position"])
+        if valid.empty:
+            continue
+        pole_idx = valid["quali_position"].idxmin()
+        model_idx = probs.loc[g.index].idxmax()
+        if model_idx == pole_idx:
+            continue
+        parts.append(g)
+        prob_parts.append(probs.loc[g.index])
+    if not parts:
+        return {"disagree_n_races": 0}
+    sub = pd.concat(parts)
+    sub_probs = pd.concat(prob_parts)
+    return {
+        "disagree_n_races": int(len(parts)),
+        "disagree_hit": winner_hit_rate(sub, sub_probs),
+        "disagree_log_loss": race_log_loss(sub, sub_probs),
+        "disagree_brier": race_brier(sub, sub_probs),
+    }

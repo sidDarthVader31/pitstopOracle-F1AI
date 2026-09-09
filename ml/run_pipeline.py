@@ -42,9 +42,27 @@ def main() -> None:
     df = build_driver_race()
     print(f"feature table rows={len(df)} races={df.groupby(['season','round']).ngroups}")
     metrics = train_and_eval()
-    print("test pre_quali hit", round(metrics.get("test_pre_quali", {}).get("test_pre_quali_hit", 0), 4))
-    print("test post_quali hit", round(metrics.get("test_post_quali", {}).get("test_post_quali_hit", 0), 4))
-    print("test post_quali log_loss", round(metrics.get("test_post_quali", {}).get("test_post_quali_log_loss", 0), 4))
+    wf26 = metrics.get("walk_forward_2026", [])
+    post_hits = [r["post_hit"] for r in wf26 if "post_hit" in r]
+    post_ll = [r["post_log_loss"] for r in wf26 if "post_log_loss" in r]
+    qg_ll = [r["post_quali_gap_log_loss"] for r in wf26 if "post_quali_gap_log_loss" in r]
+    if wf26:
+        print(
+            "2026 walk-forward post_quali hit",
+            round(sum(post_hits) / len(post_hits), 4) if post_hits else "n/a",
+        )
+        print(
+            "2026 walk-forward post_quali log_loss",
+            round(sum(post_ll) / len(post_ll), 4) if post_ll else "n/a",
+        )
+        print(
+            "2026 walk-forward quali-gap log_loss",
+            round(sum(qg_ll) / len(qg_ll), 4) if qg_ll else "n/a",
+        )
+    else:
+        train_post = metrics.get("train_post_quali", {})
+        print("train post_quali hit", round(train_post.get("train_post_quali_hit", 0), 4))
+        print("train post_quali log_loss", round(train_post.get("train_post_quali_log_loss", 0), 4))
     print("wrote ml/reports/EVAL.md")
 
 

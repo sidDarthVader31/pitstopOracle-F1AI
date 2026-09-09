@@ -28,7 +28,9 @@ flowchart LR
 | [`ml/f1ml/starting_grid.py`](../ml/f1ml/starting_grid.py) | Official starting grid merge (OpenF1 + manual) |
 | [`ml/f1ml/features.py`](../ml/f1ml/features.py) | One row per driver per race; rolling form, circuit overtaking index, teammate H2H |
 | [`ml/f1ml/specs.py`](../ml/f1ml/specs.py) | Pre-quali vs post-quali feature definitions |
-| [`ml/f1ml/train.py`](../ml/f1ml/train.py) | Dual-mode training, walk-forward eval, gradient boosting + logreg baselines |
+| [`ml/f1ml/ratings.py`](../ml/f1ml/ratings.py) | Era-reset constructor pace + driver skill EWMA ratings |
+| [`ml/f1ml/ranking.py`](../ml/f1ml/ranking.py) | Pairwise ranker, Plackett-Luce markets, DNF hazard |
+| [`ml/f1ml/train.py`](../ml/f1ml/train.py) | Dual-mode training, 2026 walk-forward eval, recency weights |
 | [`ml/f1ml/predict.py`](../ml/f1ml/predict.py) | Weekend card API: win, podium, DNF, finish, fantasy points |
 | [`ml/f1ml/fantasy.py`](../ml/f1ml/fantasy.py) | F1 Fantasy-style expected points engine |
 | [`ml/f1ml/eval.py`](../ml/f1ml/eval.py) | Log-loss, Brier, calibration, rank correlation |

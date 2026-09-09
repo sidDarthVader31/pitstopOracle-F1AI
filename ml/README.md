@@ -25,16 +25,23 @@ pip install -r requirements.txt
 | `python predict_race.py --season 2026 --round 13` | CLI weekend card for one GP |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
 
-## Models (v2)
+## Models (v3)
 
-Two weekend modes, trained separately:
+Two weekend modes, trained separately with a **pairwise ranker + Plackett-Luce** distribution:
 
 | Mode | When | Features |
 |---|---|---|
-| `pre_quali` | Before qualifying | Form, standings, circuit history, weather |
-| `post_quali` | After qualifying | All of the above + quali, grid, sprint |
+| `pre_quali` | Before qualifying | Car/driver ratings, form, circuit, weather, FP pace |
+| `post_quali` | After qualifying | All of the above + quali gap (seconds), grid, sprint |
 
-Each mode trains gradient boosting heads for **win**, **podium**, **DNF**, and **expected finish**, with race-level softmax calibration for win probabilities.
+Win, podium, and expected finish come from a **single** finishing distribution. Constructor pace **resets at 2026**; driver skill carries over. DNF hazard is modeled separately.
+
+Run full ingest (including OpenF1 FP backfill + pit stops):
+
+```bash
+python run_pipeline.py          # ingest + train
+python run_pipeline.py --refresh  # clear Jolpica cache and re-fetch
+```
 
 ## Dashboard pages
 

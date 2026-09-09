@@ -139,6 +139,37 @@ def ingest_qualifying(years: range) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def ingest_pitstops(races: pd.DataFrame) -> pd.DataFrame:
+    """Fetch pit stops per race round (Jolpica rejects season-level /{year}/pitstops.json)."""
+    rows = []
+    for rec in races.sort_values(["season", "round"]).itertuples(index=False):
+        season, rnd = int(rec.season), int(rec.round)
+        path = f"{season}/{rnd}/pitstops.json"
+        payload = get_json(path)
+        race_list = (
+            payload.get("MRData", {})
+            .get("RaceTable", {})
+            .get("Races", [])
+            or []
+        )
+        for race in race_list:
+            for stop in race.get("PitStops", []) or []:
+                row = {
+                    "season": season,
+                    "round": rnd,
+                    "stop": int(stop["stop"]) if str(stop.get("stop", "")).isdigit() else None,
+                    "lap": int(stop["lap"]) if str(stop.get("lap", "")).isdigit() else None,
+                    "duration": stop.get("duration"),
+                    "time": stop.get("time"),
+                }
+                if stop.get("Driver"):
+                    row.update(_driver_row(stop.get("Driver", {})))
+                elif stop.get("driverId"):
+                    row["driver_id"] = stop["driverId"]
+                rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def ingest_sprints(years: range) -> pd.DataFrame:
     rows = []
     for year in years:
@@ -254,6 +285,7 @@ def run(
     results = ingest_results(years)
     quali = ingest_qualifying(years)
     sprints = ingest_sprints(years)
+    pitstops = ingest_pitstops(races)
     standings = ingest_standings_after_rounds(races)
     weather = ingest_weather(races)
 
@@ -261,21 +293,24 @@ def run(
     results.to_parquet(RAW / "results.parquet", index=False)
     quali.to_parquet(RAW / "qualifying.parquet", index=False)
     sprints.to_parquet(RAW / "sprints.parquet", index=False)
+    pitstops.to_parquet(RAW / "pitstops.parquet", index=False)
     standings.to_parquet(RAW / "standings.parquet", index=False)
     weather.to_parquet(RAW / "weather.parquet", index=False)
 
     clear_bypass_cache_seasons()
-    print(f"races={len(races)} results={len(results)} quali={len(quali)} "
-          f"sprints={len(sprints)} standings={len(standings)} weather={len(weather)}")
+    print(
+        f"races={len(races)} results={len(results)} quali={len(quali)} "
+        f"sprints={len(sprints)} pitstops={len(pitstops)} standings={len(standings)} weather={len(weather)}"
+    )
 
     _sync_canonical_sources(end_year)
 
 
 def _sync_canonical_sources(end_year: int) -> None:
     """Pull live weekend data from OpenF1 / forecast APIs into canonical store."""
-    from f1ml.adapters.openf1 import OpenF1Adapter
+    from f1ml.adapters.openf1 import OpenF1Adapter, backfill_fp_pace, write_fp_pace_from_bundle
     from f1ml.adapters.openmeteo import OpenMeteoForecastAdapter
-    from f1ml.paths import CANONICAL
+    from f1ml.paths import CANONICAL, START_YEAR
     from f1ml.starting_grid import ensure_manual_template, sync_starting_grid
 
     ensure_manual_template()
@@ -286,23 +321,12 @@ def _sync_canonical_sources(end_year: int) -> None:
         print(f"starting_grid sync skipped: {exc}")
 
     try:
-        openf1 = OpenF1Adapter().pull(end_year, round_num=None)
-        if openf1.session_results:
-            CANONICAL.mkdir(parents=True, exist_ok=True)
-            fp_rows = [
-                {
-                    "season": r.season,
-                    "round": r.round,
-                    "driver_id": r.driver_id,
-                    "session_type": r.session_type,
-                    "best_lap_seconds": r.best_lap_seconds,
-                }
-                for r in openf1.session_results
-            ]
-            import pandas as pd
+        from f1ml.adapters.openf1 import backfill_fp_pace, write_fp_pace_from_bundle
 
-            pd.DataFrame(fp_rows).to_parquet(CANONICAL / "fp_pace.parquet", index=False)
-            print(f"fp_pace rows={len(fp_rows)}")
+        openf1 = OpenF1Adapter().pull(end_year, round_num=None)
+        write_fp_pace_from_bundle(openf1)
+        fp = backfill_fp_pace(START_YEAR, end_year, skip_existing=True)
+        print(f"fp_pace rows={len(fp)}")
     except Exception as exc:
         print(f"fp_pace sync skipped: {exc}")
 

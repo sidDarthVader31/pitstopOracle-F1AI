@@ -6,8 +6,13 @@ from typing import Literal
 
 WeekendMode = Literal["pre_quali", "post_quali"]
 
-# Shared form / context features (no quali leakage).
+ERA_RESET_YEAR = 2026
+
+# Shared form / context features (no quali leakage for pre-quali).
 FEATURE_PRE_QUALI_NUM = [
+    "car_pace_ewma",
+    "driver_skill_ewma",
+    "car_driver_combo",
     "champ_position_before",
     "champ_points_before",
     "champ_wins_before",
@@ -19,6 +24,9 @@ FEATURE_PRE_QUALI_NUM = [
     "constructor_id_points_last_5",
     "constructor_id_avg_finish_last_5",
     "constructor_id_dnf_rate_last_5",
+    "dnf_hazard_car",
+    "dnf_hazard_driver",
+    "dnf_hazard_combined",
     "circuit_avg_finish_prior",
     "circuit_grid_to_finish_delta",
     "teammate_quali_h2h_rate",
@@ -28,21 +36,31 @@ FEATURE_PRE_QUALI_NUM = [
     "precipitation_mm",
     "fp2_best_lap_delta",
     "fp3_best_lap_delta",
+    "fp_best_delta",
+    "fp_longrun_delta",
+    "race_pace_delta",
+    "pit_stops_avg",
+    "pit_time_avg_s",
+    "regs_era",
 ]
 
 FEATURE_POST_QUALI_EXTRA = [
     "quali_position",
+    "quali_gap_s",
+    "quali_gap_to_median_s",
     "grid",
     "grid_vs_quali",
     "best_quali_seconds",
     "quali_vs_teammate",
+    "teammate_quali_gap_s",
     "sprint_position",
 ]
 
-FEATURE_CAT = ["constructor_id"]
+FEATURE_CAT: list[str] = []
 
 TRAIN_SEASONS = {2022, 2023, 2024, 2025, 2026}
 TEST_SEASONS: set[int] = set()
+EVAL_YEAR = 2026
 
 
 def season_range_label(seasons: set[int]) -> str:

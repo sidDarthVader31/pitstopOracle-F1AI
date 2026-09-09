@@ -51,6 +51,49 @@ def _driver_label(row: pd.Series) -> str:
   return f"{row['given_name']} {row['family_name']}"
 
 
+def _eval_split(metrics: dict, mode: str) -> dict:
+  """Prefer walk-forward OOS metrics; fall back to legacy test_* keys."""
+  test = metrics.get(f"test_{mode}", {})
+  oos = metrics.get("oos", {})
+  if mode == "pre_quali":
+    if oos.get("oos_n_races", 0) or test.get(f"test_{mode}_hit"):
+      return {
+        f"test_{mode}_hit": oos.get("oos_pre_quali_hit", test.get(f"test_{mode}_hit", 0)),
+        f"test_{mode}_log_loss": oos.get(
+          "oos_pre_quali_log_loss", test.get(f"test_{mode}_log_loss", 0)
+        ),
+        **{k: v for k, v in test.items() if k not in (f"test_{mode}_hit", f"test_{mode}_log_loss")},
+      }
+  else:
+    if oos.get("oos_post_quali_n_races", 0) or test.get(f"test_{mode}_hit"):
+      return {
+        f"test_{mode}_hit": oos.get("oos_post_quali_hit", test.get(f"test_{mode}_hit", 0)),
+        f"test_{mode}_log_loss": oos.get(
+          "oos_post_quali_log_loss", test.get(f"test_{mode}_log_loss", 0)
+        ),
+        f"test_{mode}_quali_gap_log_loss": oos.get(
+          "oos_post_quali_quali_gap_log_loss",
+          test.get(f"test_{mode}_quali_gap_log_loss", 0),
+        ),
+        **{
+          k: v
+          for k, v in test.items()
+          if k
+          not in (
+            f"test_{mode}_hit",
+            f"test_{mode}_log_loss",
+            f"test_{mode}_quali_gap_log_loss",
+          )
+        },
+      }
+  return test
+
+
+def _oos_label(metrics: dict) -> str:
+  n = metrics.get("oos", {}).get("oos_n_races", 0)
+  return f"Walk-forward 2026 ({n} races)" if n else "Test"
+
+
 def win_prob_bar(scored: pd.DataFrame, top_n: int = 10) -> go.Figure:
   data = scored.head(top_n).sort_values("win_prob", ascending=True).copy()
   data["driver"] = data.apply(_driver_label, axis=1)
@@ -131,9 +174,9 @@ def compare_scenarios(baseline: pd.DataFrame, scenario: pd.DataFrame, top_n: int
 
 
 def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
-  split = metrics.get(f"test_{mode}", {})
+  split = _eval_split(metrics, mode)
+  oos_name = _oos_label(metrics)
   if mode == "pre_quali":
-    methods = ["oracle", "equal", "champ"]
     labels = ["Oracle", "Equal field", "Champ leader"]
     test = [
       split.get(f"test_{mode}_hit", 0) * 100,
@@ -147,7 +190,6 @@ def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
       0,
     ]
   else:
-    methods = ["oracle", "pole", "champ"]
     labels = ["Oracle", "Pole", "Champ leader"]
     test = [
       split.get(f"test_{mode}_hit", 0) * 100,
@@ -162,7 +204,7 @@ def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
     ]
   fig = go.Figure()
   fig.add_trace(go.Bar(name="Train", x=labels, y=train, marker_color="#6b7280"))
-  fig.add_trace(go.Bar(name="Test", x=labels, y=test, marker_color="#e10600"))
+  fig.add_trace(go.Bar(name=oos_name, x=labels, y=test, marker_color="#e10600"))
   fig.update_layout(
     **_layout(
       barmode="group",
@@ -176,7 +218,7 @@ def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
 
 
 def log_loss_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
-  split = metrics.get(f"test_{mode}", {})
+  split = _eval_split(metrics, mode)
   if mode == "pre_quali":
     labels = ["Oracle", "Equal field", "Champ leader"]
     values = [
@@ -185,16 +227,16 @@ def log_loss_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
       split.get(f"test_{mode}_champ_log_loss", 0),
     ]
   else:
-    labels = ["Oracle", "Pole", "Champ leader"]
+    labels = ["Oracle", "Quali-gap", "Pole"]
     values = [
       split.get(f"test_{mode}_log_loss", 0),
+      split.get(f"test_{mode}_quali_gap_log_loss", 0),
       split.get(f"test_{mode}_pole_log_loss", 0),
-      split.get(f"test_{mode}_champ_log_loss", 0),
     ]
   fig = go.Figure(go.Bar(x=labels, y=values, marker_color="#3671C6"))
   fig.update_layout(
     **_layout(
-      title=f"Log-loss (lower is better) — {mode.replace('_', ' ')}",
+      title=f"Log-loss (lower is better) — {mode.replace('_', ' ')} ({_oos_label(metrics)})",
       yaxis_title="Log-loss",
     )
   )

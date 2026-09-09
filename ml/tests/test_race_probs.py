@@ -34,8 +34,9 @@ def test_apply_race_probs_per_race_group():
             "driver_id": ["a", "b", "c", "d"],
         }
     )
-    raw = pd.Series([0.2, 0.01, 0.15, 0.02], index=df.index)
+    raw = pd.Series([2.0, -1.0, 1.5, -0.5], index=df.index)
     probs = apply_race_probs(df, raw, temperature=1.0)
     assert abs(probs.groupby([df["season"], df["round"]]).sum().sum() - 2.0) < 1e-9
     race1 = probs.iloc[:2]
-    assert race1.iloc[1] < 0.05
+    assert race1.iloc[0] > race1.iloc[1]
+    assert race1.iloc[1] < 0.2
