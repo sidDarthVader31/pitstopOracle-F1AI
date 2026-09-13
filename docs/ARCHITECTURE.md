@@ -24,6 +24,7 @@ flowchart LR
 | [`ml/f1ml/adapters/`](../ml/f1ml/adapters/) | Pluggable sources: Jolpica, OpenF1, Open-Meteo, manual CSV |
 | [`ml/f1ml/schema/`](../ml/f1ml/schema/) | Canonical entity definitions |
 | [`docs/DATASET.md`](DATASET.md) | Stable schema, relations, null rules |
+| [`ml/f1ml/calendar.py`](../ml/f1ml/calendar.py) | Race calendar helpers; next upcoming GP without model imports |
 | [`ml/f1ml/ingest.py`](../ml/f1ml/ingest.py) | Pull races, results, qualifying, standings, weather from Jolpica + Open-Meteo; sync canonical |
 | [`ml/f1ml/starting_grid.py`](../ml/f1ml/starting_grid.py) | Official starting grid merge (OpenF1 + manual) |
 | [`ml/f1ml/features.py`](../ml/f1ml/features.py) | One row per driver per race; rolling form, circuit overtaking index, teammate H2H |
@@ -47,13 +48,26 @@ The first baseline is always **pole sitter** (post-quali only). Pre-quali is com
 
 ## Upcoming race predictions
 
-For races not yet in `driver_race.parquet` (e.g. Monza before qualifying):
+For races not yet in `driver_race.parquet` (no race results row yet):
 
-1. `resolve_race_features(season, round)` tries completed race data
-2. Falls back to `build_upcoming_race_features()` using the latest completed round in the season for driver lineup and form
+1. `resolve_race_features(season, round)` uses completed rows from `driver_race.parquet` only when the race has a winner
+2. Otherwise it always builds via `build_upcoming_race_features()` using the latest completed round in the season for driver lineup and form
 3. Championship standings come from standings after that round
-4. Qualifying columns are merged from `data/raw/qualifying.parquet` when available
-5. **Starting grid** is merged from `data/canonical/starting_grid.parquet` (OpenF1 + `data/manual/starting_grid.csv`) — penalties applied via `grid` and `grid_vs_quali`, not quali copy
+4. Qualifying columns are merged live from `data/raw/qualifying.parquet` when available
+5. **FP pace** (FP1–FP3) comes from `data/canonical/fp_pace.parquet` (OpenF1); `fp_best_delta` prefers FP3 → FP2 → FP1
+6. **Starting grid** is merged from `data/canonical/starting_grid.parquet` (OpenF1 + `data/manual/starting_grid.csv`) — penalties applied via `grid` and `grid_vs_quali`, not quali copy
+
+## Weekend ingest (default pipeline)
+
+`python run_pipeline.py` (no flags):
+
+- Bypasses Jolpica disk cache for the **current calendar year** so new qualifying/results appear without `--all-data`
+- Does **not** cache Jolpica 404 responses (future pit-stop/standings endpoints retry on later runs)
+- Syncs OpenF1 for the **next upcoming GP**: FP1–FP3 pace, official starting grid, weather forecast
+- Force-refreshes FP data for that round even when historical FP backfill is skipped
+- Clears in-process prediction caches after feature rebuild (Streamlit picks up new parquet on the next interaction)
+
+Use `python run_pipeline.py --all-data` (alias `--refresh`) to clear cache and re-fetch **2022–present**.
 
 ## Future warehouse
 
