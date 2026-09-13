@@ -39,9 +39,10 @@ def _parse_pit_duration(value: str | float | None) -> float | None:
 
 
 def _merge_fp_pace(df: pd.DataFrame) -> pd.DataFrame:
-    """Attach FP2/FP3 best-lap and long-run delta vs field median."""
+    """Attach FP1/FP2/FP3 best-lap and long-run delta vs field median."""
     path = CANONICAL / "fp_pace.parquet"
     for col in (
+        "fp1_best_lap_delta",
         "fp2_best_lap_delta",
         "fp3_best_lap_delta",
         "fp_best_delta",
@@ -54,6 +55,7 @@ def _merge_fp_pace(df: pd.DataFrame) -> pd.DataFrame:
 
     fp = pd.read_parquet(path)
     session_map = {
+        "FP1": ("fp1_best_lap_delta", "FP1_LONGRUN"),
         "FP2": ("fp2_best_lap_delta", "FP2_LONGRUN"),
         "FP3": ("fp3_best_lap_delta", "FP3_LONGRUN"),
         "Race": ("race_pace_delta", None),
@@ -89,7 +91,9 @@ def _merge_fp_pace(df: pd.DataFrame) -> pd.DataFrame:
                 df = df.drop(columns=["fp_longrun_delta"], errors="ignore")
                 df = df.merge(lmerge, on=["season", "round", "driver_id"], how="left")
 
-    df["fp_best_delta"] = df["fp3_best_lap_delta"].fillna(df["fp2_best_lap_delta"])
+    df["fp_best_delta"] = df["fp3_best_lap_delta"].fillna(df["fp2_best_lap_delta"]).fillna(
+        df["fp1_best_lap_delta"]
+    )
     if "fp_longrun_delta" in df.columns:
         pass
     else:
@@ -374,6 +378,7 @@ def build_driver_race() -> pd.DataFrame:
         "circuit_grid_to_finish_delta",
         "teammate_quali_h2h_rate",
         "precipitation_mm",
+        "fp1_best_lap_delta",
         "fp2_best_lap_delta",
         "fp3_best_lap_delta",
         "fp_best_delta",

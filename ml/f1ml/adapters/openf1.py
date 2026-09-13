@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 
 from f1ml.adapters.base import SourceAdapter
+from f1ml.calendar import next_upcoming_race
 from f1ml.paths import CACHE, CANONICAL, RAW
 from f1ml.schema.entities import CanonicalBundle, SessionResult, StartingGrid
 
@@ -151,8 +152,6 @@ class OpenF1Adapter(SourceAdapter):
         if round_num is not None:
             rounds = [round_num]
         else:
-            from f1ml.predict import next_upcoming_race
-
             try:
                 s, upcoming = next_upcoming_race()
                 rounds = [upcoming] if s == season else []
@@ -255,6 +254,7 @@ def backfill_fp_pace(
     *,
     max_rounds_per_season: int | None = None,
     skip_existing: bool = True,
+    force_rounds: set[tuple[int, int]] | None = None,
 ) -> pd.DataFrame:
     """Backfill FP/Race pace from OpenF1 for all completed rounds."""
     races = pd.read_parquet(RAW / "races.parquet")
@@ -263,6 +263,8 @@ def backfill_fp_pace(
     if skip_existing and existing_path.exists():
         existing = pd.read_parquet(existing_path)
 
+    force_rounds = force_rounds or set()
+    pace_sessions = ("FP1", "FP2", "FP3", "Race")
     adapter = OpenF1Adapter()
     all_results: list[SessionResult] = []
     for year in range(start_year, end_year + 1):
@@ -271,11 +273,16 @@ def backfill_fp_pace(
             season_races = season_races.head(max_rounds_per_season)
         for _, race in season_races.iterrows():
             rnd = int(race["round"])
-            if skip_existing and not existing.empty:
+            if (year, rnd) in force_rounds:
+                if not existing.empty:
+                    existing = existing[
+                        ~((existing["season"] == year) & (existing["round"] == rnd))
+                    ]
+            elif skip_existing and not existing.empty:
                 have = existing[
                     (existing["season"] == year)
                     & (existing["round"] == rnd)
-                    & (existing["session_type"].isin(["FP2", "FP3", "Race"]))
+                    & (existing["session_type"].isin(pace_sessions))
                 ]
                 if len(have) >= 10:
                     continue
@@ -302,13 +309,23 @@ def write_fp_pace_from_bundle(bundle: CanonicalBundle) -> None:
         return
     path = CANONICAL / "fp_pace.parquet"
     new_df = _session_results_to_frame(bundle.session_results)
+    if new_df.empty:
+        return
+    rounds = new_df[["season", "round"]].drop_duplicates()
     if path.exists():
         existing = pd.read_parquet(path)
+        for _, row in rounds.iterrows():
+            existing = existing[
+                ~(
+                    (existing["season"] == row["season"])
+                    & (existing["round"] == row["round"])
+                )
+            ]
         merged = pd.concat([existing, new_df], ignore_index=True)
-        merged = merged.drop_duplicates(
-            ["season", "round", "driver_id", "session_type"], keep="last"
-        )
     else:
         merged = new_df
+    merged = merged.drop_duplicates(
+        ["season", "round", "driver_id", "session_type"], keep="last"
+    )
     CANONICAL.mkdir(parents=True, exist_ok=True)
     merged.to_parquet(path, index=False)

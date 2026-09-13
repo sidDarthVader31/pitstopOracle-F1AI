@@ -16,7 +16,8 @@ from f1ml.jolpica import (
     get_json,
     set_bypass_cache_seasons,
 )
-from f1ml.paths import CACHE, END_YEAR, OPEN_METEO, RAW, START_YEAR
+from f1ml.calendar import current_season, next_upcoming_race
+from f1ml.paths import CACHE, CANONICAL, END_YEAR, OPEN_METEO, RAW, START_YEAR
 
 _WEATHER = requests.Session()
 _WEATHER.headers.update({"User-Agent": "pitstopOracle-F1AI/0.1"})
@@ -269,18 +270,78 @@ def ingest_weather(races: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def configure_ingest_cache(
+    *,
+    all_data: bool,
+    start_year: int,
+    end_year: int,
+) -> None:
+    """Set Jolpica cache bypass for an ingest run."""
+    if all_data:
+        removed = clear_season_caches(range(start_year, end_year + 1))
+        set_bypass_cache_seasons(set(range(start_year, end_year + 1)))
+        print(f"all-data: cleared {removed} cached Jolpica responses for {start_year}–{end_year}")
+    else:
+        season = current_season()
+        if start_year <= season <= end_year:
+            set_bypass_cache_seasons({season})
+            print(f"live ingest: bypassing Jolpica cache for season {season}")
+
+
+def weekend_ingest_summary(season: int, round_num: int) -> str:
+    """Human-readable snapshot of live weekend data availability."""
+    from f1ml.starting_grid import grid_for_round
+
+    quali_n = 0
+    quali_path = RAW / "qualifying.parquet"
+    if quali_path.exists():
+        q = pd.read_parquet(quali_path)
+        quali_n = len(
+            q[
+                (q["season"] == season)
+                & (q["round"] == round_num)
+                & (q["quali_position"].notna())
+            ]
+        )
+
+    fp_counts = {"FP1": 0, "FP2": 0, "FP3": 0}
+    fp_path = CANONICAL / "fp_pace.parquet"
+    if fp_path.exists():
+        fp = pd.read_parquet(fp_path)
+        sub = fp[(fp["season"] == season) & (fp["round"] == round_num)]
+        for session in fp_counts:
+            fp_counts[session] = int((sub["session_type"] == session).sum())
+
+    grid = grid_for_round(season, round_num)
+    grid_n = len(grid)
+    race_name = ""
+    races_path = RAW / "races.parquet"
+    if races_path.exists():
+        races = pd.read_parquet(races_path)
+        row = races[(races["season"] == season) & (races["round"] == round_num)]
+        if not row.empty:
+            race_name = str(row.iloc[0].get("race_name", ""))
+
+    label = f"{race_name} · " if race_name else ""
+    return (
+        f"weekend {season} R{round_num:02d} {label}"
+        f"quali={quali_n} "
+        f"fp1={fp_counts['FP1']} fp2={fp_counts['FP2']} fp3={fp_counts['FP3']} "
+        f"grid={grid_n}"
+    )
+
+
 def run(
     start_year: int = START_YEAR,
     end_year: int = END_YEAR,
     *,
     refresh: bool = False,
+    all_data: bool | None = None,
 ) -> None:
     RAW.mkdir(parents=True, exist_ok=True)
     years = range(start_year, end_year + 1)
-    if refresh:
-        removed = clear_season_caches(years)
-        set_bypass_cache_seasons(set(years))
-        print(f"refresh: cleared {removed} cached Jolpica responses for {start_year}–{end_year}")
+    full_refresh = all_data if all_data is not None else refresh
+    configure_ingest_cache(all_data=full_refresh, start_year=start_year, end_year=end_year)
     races = ingest_races(years)
     results = ingest_results(years)
     quali = ingest_qualifying(years)
@@ -303,29 +364,37 @@ def run(
         f"sprints={len(sprints)} pitstops={len(pitstops)} standings={len(standings)} weather={len(weather)}"
     )
 
-    _sync_canonical_sources(end_year)
+    _sync_canonical_sources(end_year, all_data=full_refresh)
 
 
-def _sync_canonical_sources(end_year: int) -> None:
+def _sync_canonical_sources(end_year: int, *, all_data: bool = False) -> None:
     """Pull live weekend data from OpenF1 / forecast APIs into canonical store."""
     from f1ml.adapters.openf1 import OpenF1Adapter, backfill_fp_pace, write_fp_pace_from_bundle
     from f1ml.adapters.openmeteo import OpenMeteoForecastAdapter
-    from f1ml.paths import CANONICAL, START_YEAR
     from f1ml.starting_grid import ensure_manual_template, sync_starting_grid
 
     ensure_manual_template()
     try:
-        grid = sync_starting_grid(end_year)
+        season, round_num = next_upcoming_race()
+    except Exception:
+        season, round_num = end_year, 1
+
+    try:
+        grid = sync_starting_grid(season, round_num)
         print(f"starting_grid rows={len(grid)}")
     except Exception as exc:
         print(f"starting_grid sync skipped: {exc}")
 
     try:
-        from f1ml.adapters.openf1 import backfill_fp_pace, write_fp_pace_from_bundle
-
-        openf1 = OpenF1Adapter().pull(end_year, round_num=None)
+        openf1 = OpenF1Adapter().pull(season, round_num)
         write_fp_pace_from_bundle(openf1)
-        fp = backfill_fp_pace(START_YEAR, end_year, skip_existing=True)
+        force = {(season, round_num)}
+        fp = backfill_fp_pace(
+            START_YEAR,
+            end_year,
+            skip_existing=not all_data,
+            force_rounds=force,
+        )
         print(f"fp_pace rows={len(fp)}")
     except Exception as exc:
         print(f"fp_pace sync skipped: {exc}")
@@ -334,7 +403,6 @@ def _sync_canonical_sources(end_year: int) -> None:
         forecast = OpenMeteoForecastAdapter().pull(end_year)
         if forecast.weather:
             CANONICAL.mkdir(parents=True, exist_ok=True)
-            import pandas as pd
 
             w_rows = [
                 {
@@ -351,3 +419,8 @@ def _sync_canonical_sources(end_year: int) -> None:
             print(f"weather_forecast rows={len(w_rows)}")
     except Exception as exc:
         print(f"weather_forecast sync skipped: {exc}")
+
+    try:
+        print(weekend_ingest_summary(season, round_num))
+    except Exception as exc:
+        print(f"weekend summary skipped: {exc}")

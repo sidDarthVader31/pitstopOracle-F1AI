@@ -65,10 +65,7 @@ def sync_starting_grid(season: int, round_num: int | None = None) -> pd.DataFram
     """Fetch OpenF1 + manual overrides and merge into canonical parquet."""
     existing = load_starting_grid()
     if round_num is None:
-        # Default: sync upcoming GP and any rounds in manual CSV only.
-        from datetime import date
-
-        from f1ml.predict import next_upcoming_race
+        from f1ml.calendar import next_upcoming_race
 
         try:
             _, upcoming = next_upcoming_race()

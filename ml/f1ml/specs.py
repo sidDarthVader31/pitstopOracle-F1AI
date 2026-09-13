@@ -34,6 +34,7 @@ FEATURE_PRE_QUALI_NUM = [
     "has_sprint",
     "round",
     "precipitation_mm",
+    "fp1_best_lap_delta",
     "fp2_best_lap_delta",
     "fp3_best_lap_delta",
     "fp_best_delta",

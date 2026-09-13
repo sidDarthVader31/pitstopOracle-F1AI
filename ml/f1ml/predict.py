@@ -9,6 +9,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from f1ml.calendar import next_upcoming_race as calendar_next_upcoming_race
 from f1ml.fantasy import constructor_fantasy_points, expected_driver_fantasy_points, oracle_xi
 from f1ml.modeling import WeekendModels, apply_race_probs, feature_matrix, plackett_luce_win_probs, raw_win_scores
 from f1ml.ranking import WeekendRanker
@@ -43,6 +44,13 @@ def load_feature_spec() -> dict:
 @lru_cache(maxsize=1)
 def load_metrics() -> dict:
     return json.loads((REPORTS / "metrics.json").read_text())
+
+
+def clear_prediction_caches() -> None:
+    """Invalidate cached parquet reads after pipeline ingest/features rebuild."""
+    load_driver_race.cache_clear()
+    list_calendar_races.cache_clear()
+    load_metrics.cache_clear()
 
 
 def inference_mode(race_mode: RaceMode) -> WeekendMode:
@@ -162,6 +170,7 @@ def status_label(mode: RaceMode) -> str:
 
 
 def next_upcoming_race() -> tuple[int, int]:
+    """Next GP on or after today (uses calendar + quali status when available)."""
     today = date.today()
     cal = list_calendar_races()
     cal["race_date"] = pd.to_datetime(cal["date"]).dt.date
@@ -173,13 +182,20 @@ def next_upcoming_race() -> tuple[int, int]:
     return int(row["season"]), int(row["round"])
 
 
+def next_upcoming_race_from_calendar() -> tuple[int, int]:
+    """Calendar-only upcoming race (safe during ingest, no processed data)."""
+    return calendar_next_upcoming_race()
+
+
 def resolve_race_features(season: int, round_num: int) -> tuple[pd.DataFrame, RaceMode]:
     try:
         race_df = get_race_features(season, round_num)
-        return race_df, race_status(race_df, season, round_num)
+        if race_df["won"].max() == 1:
+            return race_df, "complete"
     except ValueError:
-        race_df = build_upcoming_race_features(season, round_num)
-        return race_df, race_status(race_df, season, round_num)
+        pass
+    race_df = build_upcoming_race_features(season, round_num)
+    return race_df, race_status(race_df, season, round_num)
 
 
 def get_race_features(season: int, round_num: int, df: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -227,13 +243,18 @@ def _raw_sprint_for_round(season: int, round_num: int) -> pd.DataFrame:
 
 def _merge_upcoming_fp_pace(out: pd.DataFrame, season: int, round_num: int) -> pd.DataFrame:
     path = CANONICAL / "fp_pace.parquet"
+    out["fp1_best_lap_delta"] = np.nan
     out["fp2_best_lap_delta"] = np.nan
     out["fp3_best_lap_delta"] = np.nan
     if not path.exists():
         return out
     fp = pd.read_parquet(path)
     sub = fp[(fp["season"] == season) & (fp["round"] == round_num)]
-    for session, col in (("FP2", "fp2_best_lap_delta"), ("FP3", "fp3_best_lap_delta")):
+    for session, col in (
+        ("FP1", "fp1_best_lap_delta"),
+        ("FP2", "fp2_best_lap_delta"),
+        ("FP3", "fp3_best_lap_delta"),
+    ):
         sess = sub[sub["session_type"] == session]
         if sess.empty:
             continue
@@ -453,6 +474,7 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
 
     out["fp_best_delta"] = out.get("fp3_best_lap_delta", pd.Series(np.nan, index=out.index))
     out["fp_best_delta"] = out["fp_best_delta"].fillna(out.get("fp2_best_lap_delta", np.nan))
+    out["fp_best_delta"] = out["fp_best_delta"].fillna(out.get("fp1_best_lap_delta", np.nan))
     out["fp_longrun_delta"] = out["fp_best_delta"]
 
     if "is_wet" not in out.columns or out["is_wet"].isna().all():

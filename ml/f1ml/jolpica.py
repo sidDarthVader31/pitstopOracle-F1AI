@@ -78,9 +78,8 @@ def get_json(path: str, params: dict[str, Any] | None = None, min_interval: floa
         time.sleep(min_interval)
         resp = _SESSION.get(url, params=params, timeout=60)
         if resp.status_code == 404:
-            payload = {"MRData": {}}
-            dest.write_text(json.dumps(payload))
-            return payload
+            # Do not cache 404s — future rounds (pit stops, standings) fill in later.
+            return {"MRData": {}}
         if resp.status_code == 429:
             time.sleep(2 ** attempt)
             continue

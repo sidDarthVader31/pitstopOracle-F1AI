@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 from f1ml.features import build_driver_race
 from f1ml.ingest import run as ingest_run
 from f1ml.paths import END_YEAR, START_YEAR
+from f1ml.predict import clear_prediction_caches
 from f1ml.train import recalibrate_temperatures, train_and_eval
 
 
@@ -21,9 +22,14 @@ def main() -> None:
     p.add_argument("--end-year", type=int, default=END_YEAR)
     p.add_argument("--skip-ingest", action="store_true")
     p.add_argument(
+        "--all-data",
+        action="store_true",
+        help="Clear Jolpica cache for the ingest year range and re-fetch all data from API",
+    )
+    p.add_argument(
         "--refresh",
         action="store_true",
-        help="Clear Jolpica disk cache for the ingest year range and re-fetch from API",
+        help="Alias for --all-data (full re-fetch from first season)",
     )
     p.add_argument(
         "--recalibrate-only",
@@ -37,8 +43,10 @@ def main() -> None:
         print("recalibrated temperatures:", results)
         return
 
+    all_data = args.all_data or args.refresh
     if not args.skip_ingest:
-        ingest_run(args.start_year, args.end_year, refresh=args.refresh)
+        ingest_run(args.start_year, args.end_year, refresh=all_data, all_data=all_data)
+    clear_prediction_caches()
     df = build_driver_race()
     print(f"feature table rows={len(df)} races={df.groupby(['season','round']).ngroups}")
     metrics = train_and_eval()

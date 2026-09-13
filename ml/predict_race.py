@@ -11,13 +11,20 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from f1ml.predict import build_upcoming_race_features, display_columns, get_race_features, weekend_card
+from f1ml.predict import (
+    build_upcoming_race_features,
+    display_columns,
+    get_race_features,
+    next_upcoming_race,
+    weekend_card,
+)
 
 
 def main() -> None:
+    default_season, default_round = next_upcoming_race()
     p = argparse.ArgumentParser(description="Predict F1 race weekend card")
-    p.add_argument("--season", type=int, default=2026)
-    p.add_argument("--round", type=int, default=13, help="2026 R13 = Italian GP (Monza)")
+    p.add_argument("--season", type=int, default=default_season)
+    p.add_argument("--round", type=int, default=default_round)
     p.add_argument("--model", choices=["hgb", "logreg", "lgbm", "rf"], default="hgb")
     p.add_argument("--wet", action="store_true")
     args = p.parse_args()
@@ -25,9 +32,12 @@ def main() -> None:
     try:
         race_df = get_race_features(args.season, args.round)
         mode = "historical"
+        if race_df["won"].max() != 1:
+            race_df = build_upcoming_race_features(args.season, args.round)
+            mode = "upcoming"
     except ValueError:
         race_df = build_upcoming_race_features(args.season, args.round)
-        mode = "pre-weekend"
+        mode = "upcoming"
 
     if args.wet:
         race_df = race_df.copy()

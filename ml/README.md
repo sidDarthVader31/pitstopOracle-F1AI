@@ -17,12 +17,13 @@ pip install -r requirements.txt
 
 | Command | Purpose |
 |---|---|
-| `python run_pipeline.py` | Ingest Jolpica data + train models |
-| `python run_pipeline.py --refresh` | Clear Jolpica cache for ingest years and re-fetch |
+| `python run_pipeline.py` | Live-fetch current season + this weekend (FP1–3, quali, grid), rebuild features, retrain |
+| `python run_pipeline.py --all-data` | Clear Jolpica cache for 2022–present and full re-fetch + retrain |
+| `python run_pipeline.py --refresh` | Alias for `--all-data` |
 | `python run_pipeline.py --skip-ingest` | Retrain from cached raw data |
-| `python -c "from f1ml.starting_grid import sync_starting_grid; sync_starting_grid(2026, 13)"` | Refresh starting grid for one GP |
+| `python -c "from f1ml.starting_grid import sync_starting_grid; sync_starting_grid(2026, 14)"` | Refresh starting grid for one GP |
 | `streamlit run app.py` | Launch dashboard |
-| `python predict_race.py --season 2026 --round 13` | CLI weekend card for one GP |
+| `python predict_race.py` | CLI weekend card for the next GP on the calendar |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
 
 ## Models (v3)
@@ -39,9 +40,11 @@ Win, podium, and expected finish come from a **single** finishing distribution. 
 Run full ingest (including OpenF1 FP backfill + pit stops):
 
 ```bash
-python run_pipeline.py          # ingest + train
-python run_pipeline.py --refresh  # clear Jolpica cache and re-fetch
+python run_pipeline.py              # weekend-first ingest + train (live current season)
+python run_pipeline.py --all-data   # full rebuild from 2022
 ```
+
+After ingest, the pipeline prints a **weekend summary** line (`quali=… fp1/fp2/fp3=… grid=…`) so you can confirm Saturday data landed before opening the dashboard.
 
 ## Dashboard pages
 
