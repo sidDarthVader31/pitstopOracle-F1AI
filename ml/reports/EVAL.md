@@ -5,17 +5,17 @@ Primary shipping metric: **2026 walk-forward** log-loss vs pole and quali-gap so
 
 ## Dataset
 
-- Rows: 2124
-- Races: 105
-- Pole win rate: **59.0%**
+- Rows: 2256
+- Races: 111
+- Pole win rate: **59.5%**
 
 ## 2026 walk-forward (primary)
 
-- Races scored: 13
-- Post-quali hit rate (mean): **46.2%**
-- Post-quali log-loss (mean): **1.297**
-- Pole log-loss (mean): **10.627**
-- Quali-gap log-loss (mean): **1.599**
+- Races scored: 19
+- Post-quali hit rate (mean): **36.8%**
+- Post-quali log-loss (mean): **1.581**
+- Pole log-loss (mean): **10.907**
+- Quali-gap log-loss (mean): **1.576**
 
 - 2026 R01: post hit 100.0%, post LL 0.321, pole LL 0.000, quali-gap LL 0.968
 - 2026 R02: post hit 0.0%, post LL 0.906, pole LL 0.000, quali-gap LL 1.436
@@ -30,20 +30,26 @@ Primary shipping metric: **2026 walk-forward** log-loss vs pole and quali-gap so
 - 2026 R11: post hit 0.0%, post LL 1.922, pole LL 0.000, quali-gap LL 1.577
 - 2026 R12: post hit 0.0%, post LL 1.520, pole LL 0.000, quali-gap LL 1.716
 - 2026 R13: post hit 0.0%, post LL 5.098, pole LL 34.539, quali-gap LL 2.546
+- 2026 R14: post hit 0.0%, post LL 1.217, pole LL 34.539, quali-gap LL 1.771
+- 2026 R15: post hit 0.0%, post LL 0.883, pole LL 0.000, quali-gap LL 0.616
+- 2026 R16: post hit 0.0%, post LL 4.967, pole LL 0.000, quali-gap LL 1.278
+- 2026 R17: post hit 0.0%, post LL 1.061, pole LL 0.000, quali-gap LL 1.662
+- 2026 R18: post hit 100.0%, post LL 0.884, pole LL 0.000, quali-gap LL 1.575
+- 2026 R19: post hit 0.0%, post LL 4.170, pole LL 34.539, quali-gap LL 2.257
 
 ## Transfer diagnostic (train <2026, test 2026 only)
 
 - Train races: 92
-- Test races (2026): 13
-- Post-quali hit: **38.5%**
-- Post-quali log-loss: **1.482**
-- Quali-gap log-loss: **1.599**
+- Test races (2026): 19
+- Post-quali hit: **47.4%**
+- Post-quali log-loss: **1.691**
+- Quali-gap log-loss: **1.576**
 
 ## When model pick ≠ pole (train set)
 
-- Races: 45
-- Model hit: **55.6%**
-- Log-loss: **1.035**
+- Races: 51
+- Model hit: **54.9%**
+- Log-loss: **1.022**
 
 
 ## Full walk-forward (by season)
@@ -64,5 +70,11 @@ Primary shipping metric: **2026 walk-forward** log-loss vs pole and quali-gap so
 - Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 1.922
 - Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 1.520
 - Season 2026: pre hit 100.0%, post hit 0.0%, post log-loss 5.098
+- Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 1.217
+- Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 0.883
+- Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 4.967
+- Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 1.061
+- Season 2026: pre hit 100.0%, post hit 100.0%, post log-loss 0.884
+- Season 2026: pre hit 0.0%, post hit 0.0%, post log-loss 4.170
 
 Models: `ml/models/pre_quali/`, `ml/models/post_quali/`.
