@@ -64,6 +64,38 @@ def _driver_number_map(season: int) -> dict[int, str]:
     return mapping
 
 
+def _plain(text: str) -> str:
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(c)).lower().strip()
+
+
+def _augment_number_map(num_map: dict[int, str], session_key: int, season: int) -> dict[int, str]:
+    """Fill driver numbers Jolpica does not know (e.g. debutants) from OpenF1's driver list.
+
+    Matches OpenF1 name acronym to Jolpica driver code, then accent-insensitive last name.
+    """
+    out = dict(num_map)
+    drivers = _get_json("drivers", {"session_key": session_key})
+    missing = [d for d in drivers if d.get("driver_number") is not None and int(d["driver_number"]) not in out]
+    if not missing:
+        return out
+    frames = [pd.read_parquet(RAW / n) for n in ("qualifying.parquet", "results.parquet") if (RAW / n).exists()]
+    if not frames:
+        return out
+    roster = pd.concat(frames, ignore_index=True)
+    roster = roster[roster["season"] == season].drop_duplicates("driver_id")
+    by_code = {str(c): d for c, d in zip(roster["driver_code"], roster["driver_id"]) if pd.notna(c)}
+    by_name = {_plain(n): d for n, d in zip(roster["family_name"], roster["driver_id"]) if pd.notna(n)}
+    taken = set(out.values())
+    for d in missing:
+        driver_id = by_code.get(str(d.get("name_acronym"))) or by_name.get(_plain(d.get("last_name", "")))
+        if driver_id and driver_id not in taken:
+            out[int(d["driver_number"])] = driver_id
+            taken.add(driver_id)
+    return out
+
+
 def _meeting_key_for_round(season: int, round_num: int) -> int | None:
     meetings = _get_json("meetings", {"year": season})
     if not meetings:
@@ -167,9 +199,11 @@ class OpenF1Adapter(SourceAdapter):
         if meeting_key is None:
             return []
         sessions = _get_json("sessions", {"meeting_key": meeting_key})
+        # OpenF1 publishes the Grand Prix starting grid (with penalties applied)
+        # under the *Qualifying* session, not the Race session.
         session_key = None
         for s in sessions:
-            if s.get("session_type") == "Race" or s.get("session_name") == "Race":
+            if s.get("session_name") == "Qualifying":
                 session_key = int(s["session_key"])
                 break
         if session_key is None:
@@ -177,7 +211,7 @@ class OpenF1Adapter(SourceAdapter):
         rows = _get_json("starting_grid", {"session_key": session_key})
         if not rows:
             return []
-        num_map = _driver_number_map(season)
+        num_map = _augment_number_map(_driver_number_map(season), session_key, season)
         quali = self._quali_positions(season, round_num)
         as_of = datetime.now(timezone.utc).isoformat()
         out: list[StartingGrid] = []
@@ -218,6 +252,8 @@ class OpenF1Adapter(SourceAdapter):
             return []
         sessions = _get_json("sessions", {"meeting_key": meeting_key})
         num_map = _driver_number_map(season)
+        if sessions and sessions[0].get("session_key"):
+            num_map = _augment_number_map(num_map, int(sessions[0]["session_key"]), season)
         results: list[SessionResult] = []
         for sess in sessions:
             stype = sess.get("session_name") or sess.get("session_type") or ""
@@ -274,10 +310,16 @@ def backfill_fp_pace(
         for _, race in season_races.iterrows():
             rnd = int(race["round"])
             if (year, rnd) in force_rounds:
-                if not existing.empty:
+                # Replace stored rows only if the refetch returns data: OpenF1 rate
+                # limits come back as an empty list, which must not wipe good data.
+                print(f"OpenF1 pace: {year} R{rnd:02d} (refresh) ...")
+                fresh = adapter._fetch_session_pace(year, rnd)
+                if fresh and not existing.empty:
                     existing = existing[
                         ~((existing["season"] == year) & (existing["round"] == rnd))
                     ]
+                all_results.extend(fresh)
+                continue
             elif skip_existing and not existing.empty:
                 have = existing[
                     (existing["season"] == year)

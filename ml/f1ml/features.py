@@ -337,6 +337,12 @@ def add_track_interactions(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def normalise_grid(df: pd.DataFrame) -> pd.Series:
+    """Official results use grid 0 for a pit-lane start; treat it as starting behind everyone."""
+    field_size = df.groupby(["season", "round"])["driver_id"].transform("count")
+    return df["grid"].where(df["grid"] != 0, field_size)
+
+
 def _append_upcoming_race(
     results: pd.DataFrame, races: pd.DataFrame, quali: pd.DataFrame
 ) -> pd.DataFrame:
@@ -502,7 +508,7 @@ def build_driver_race() -> pd.DataFrame:
     df["points_finish"] = (df["position"] <= 10).astype(int)
     df["podium"] = df["position"].isin([1, 2, 3]).astype(int)
     df["has_sprint"] = df["sprint_position"].notna().astype(int)
-    df["grid"] = df["grid"].replace(0, np.nan)
+    df["grid"] = normalise_grid(df)
     df = _apply_upcoming_grid(df)
     df["grid_vs_quali"] = df["grid"] - df["quali_position"]
 

@@ -76,6 +76,13 @@ The Fantasy Lab what-if showed that moving the pole-sitter to P20 *raised* his w
 
 We keep the adopted recipe. The what-if now moves only the starting slot (`grid`, which is constrained so a worse slot never helps) and leaves `grid_vs_quali` unchanged.
 
+### Starting grid follow-up (penalties)
+
+- **Upcoming race.** It used qualifying order instead of the official starting grid. The OpenF1 adapter requested `starting_grid` with the *Race* session key, but OpenF1 publishes it under the *Qualifying* session, so the request always came back empty and the code fell back to qualifying order. Fixed. For Brazil 2026 the real grid has Leclerc P4→P14, Hamilton P11→P20, Russell P2→P7 and Verstappen P16→P21. The forecast changes from Russell 31% / Antonelli 27% / Norris 21% (qualifying order, saved as `2026_R20_qualiorder_post_quali.csv`) to Antonelli 49% / Norris 29% / Russell 8%.
+- **Debutants.** Drivers without a Jolpica permanent number (e.g. Câmara #51) are now mapped by OpenF1 name acronym or accent-insensitive surname. Their grid slot, practice and qualifying laps were previously dropped.
+- **Pit-lane starts.** Historical results record a pit-lane start as grid `0`. It was converted to missing and then imputed as a midfield value; it's now set to the back of the grid. Walk-forward over 2025–26: post-quali hit 41.9%→44.2% (2026: 36.8%→42.1%), log-loss 1.322→1.372 (2026: 1.527→1.618), pre-quali log-loss 1.967→1.959. The changes are mixed and within noise; we keep it because it's the factually correct encoding. Full 91-race window after the fix: post-quali log-loss 1.422 (was 1.362; grid baseline 1.466), hit 48.4% (was 47.3%); pre-quali log-loss 1.788 (was 1.795), hit 37.4% (was 36.3%).
+- **Data loss.** The FP-pace backfill used to delete a round's stored practice data before re-fetching it, and an OpenF1 rate-limit (an empty response) wiped it. Now rows are only replaced when the refetch returns data.
+
 ## Decision
 
 Adopt the "track + race pace" recipe as the weekend recipe and keep collecting live results. Revisit after 5 or more live races with `reports/live_tracking.csv`. Next experiments, one at a time:

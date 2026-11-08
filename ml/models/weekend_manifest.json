@@ -1,7 +1,7 @@
 {
   "season": 2026,
   "round": 20,
-  "created_at_utc": "20261108T104814Z",
+  "created_at_utc": "20261108T124014Z",
   "modes": {
     "pre_quali": {
       "status": "trained",
@@ -104,7 +104,7 @@
       "status": "trained",
       "races": 27,
       "trained_through": "2026-10-11",
-      "temperature": 1.2197554094669347,
+      "temperature": 1.540983549530757,
       "features": [
         "car_pace_ewma",
         "driver_skill_ewma",
@@ -156,5 +156,5 @@
       ]
     }
   },
-  "previous_models_archived_to": "/Users/sid/Documents/sid/projects/pitstopOracle-F1AI/ml/models/archive/auto-20261108T104814Z"
+  "previous_models_archived_to": "/Users/sid/Documents/sid/projects/pitstopOracle-F1AI/ml/models/archive/auto-20261108T124014Z"
 }
