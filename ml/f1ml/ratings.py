@@ -144,21 +144,28 @@ def build_ratings(df: pd.DataFrame) -> pd.DataFrame:
         car_state = NEW_ENTRANT_CAR_PRIOR
         dnf_car_state = 0.15
         prev_era = None
-        for idx, row in cgrp.iterrows():
+        for (_, _), event in cgrp.groupby(["season", "round"], sort=True):
+            row = event.iloc[0]
             if prev_era is not None and row["season"] >= ERA_RESET_YEAR and prev_era < ERA_RESET_YEAR:
                 car_state = NEW_ENTRANT_CAR_PRIOR
                 dnf_car_state = 0.15
-            car_rating.loc[idx] = car_state
-            dnf_hazard_car.loc[idx] = dnf_car_state
+            car_rating.loc[event.index] = car_state
+            dnf_hazard_car.loc[event.index] = dnf_car_state
             prev_era = row["season"]
 
-            pace_parts = [row.get("quali_gap_s"), row.get("fp_longrun_delta"), row.get("race_pace_delta")]
-            pace_parts = [float(x) for x in pace_parts if pd.notna(x)]
+            pace_cols = ["quali_gap_s", "fp_longrun_delta", "race_pace_delta"]
+            pace_parts = [
+                float(value)
+                for col in pace_cols
+                if col in event
+                for value in event[col].dropna().tolist()
+            ]
             if pace_parts:
                 pace_obs = float(np.mean(pace_parts))
                 car_state = CAR_EWMA_ALPHA * pace_obs + (1 - CAR_EWMA_ALPHA) * car_state
-            if pd.notna(row.get("dnf")):
-                dnf_car_state = DNF_EWMA_ALPHA * float(row["dnf"]) + (1 - DNF_EWMA_ALPHA) * dnf_car_state
+            event_dnf = event["dnf"].dropna() if "dnf" in event else pd.Series(dtype=float)
+            if not event_dnf.empty:
+                dnf_car_state = DNF_EWMA_ALPHA * float(event_dnf.mean()) + (1 - DNF_EWMA_ALPHA) * dnf_car_state
 
     for driver_id, dgrp in out.groupby("driver_id", sort=False):
         dgrp = dgrp.sort_values(["season", "round"])

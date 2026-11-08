@@ -148,7 +148,9 @@ def test_resolve_race_features_uses_quali_overlay(tmp_path: Path):
             "beat_teammate_quali": [0.0, 0.0],
             "grid_finish_delta": [0.0, 0.0],
             "is_wet": [0, 0],
-            "precipitation_mm": [0.0, 0.0],
+            "precipitation_mm": [8.0, 8.0],
+            "race_pace_delta": [4.0, 5.0],
+            "fp1_best_lap_delta": [0.2, -0.2],
         }
     )
     history.to_parquet(processed / "driver_race.parquet", index=False)
@@ -165,6 +167,10 @@ def test_resolve_race_features_uses_quali_overlay(tmp_path: Path):
     max_row = race_df[race_df["driver_id"] == "max_verstappen"].iloc[0]
     assert max_row["quali_position"] == 3
     assert predict.safe_pole_pick(race_df) is not None
+    assert race_df["race_pace_delta"].isna().all()
+    assert race_df["fp1_best_lap_delta"].isna().all()
+    assert race_df["precipitation_mm"].isna().all()
+    assert race_df["is_wet"].isna().all()
 
 
 def test_clear_prediction_caches_invalidates_driver_race(tmp_path: Path):

@@ -15,7 +15,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from f1ml.eval import race_softmax
-from f1ml.specs import WeekendMode, feature_columns
+from f1ml.specs import FEATURE_PRE_QUALI_NUM, WeekendMode, feature_columns
 
 
 def build_rank_regressor() -> HistGradientBoostingRegressor:
@@ -47,7 +47,7 @@ def make_rank_pipeline(numeric: list[str]) -> Pipeline:
                 "num",
                 Pipeline(
                     [
-                        ("impute", SimpleImputer(strategy="median")),
+                        ("impute", SimpleImputer(strategy="median", keep_empty_features=True)),
                         ("scale", StandardScaler()),
                     ]
                 ),
@@ -63,7 +63,7 @@ def make_dnf_pipeline(numeric: list[str]) -> Pipeline:
         [
             (
                 "num",
-                Pipeline([("impute", SimpleImputer(strategy="median"))]),
+                Pipeline([("impute", SimpleImputer(strategy="median", keep_empty_features=True))]),
                 numeric,
             )
         ]
@@ -105,10 +105,13 @@ def train_pairwise_ranker(
     Higher predicted score => better expected finish.
     """
     numeric, _ = feature_columns(mode)
+    rank_train = train[pd.to_numeric(train["position"], errors="coerce").notna()].copy()
+    if rank_train.empty:
+        raise ValueError("ranker training requires at least one numeric finishing position")
     pipe = make_rank_pipeline(numeric)
-    X = _feature_matrix(train, mode)
-    y = -train["position"].astype(float)
-    w = race_sample_weights(train, eval_year)
+    X = _feature_matrix(rank_train, mode)
+    y = -rank_train["position"].astype(float)
+    w = race_sample_weights(rank_train, eval_year)
     pipe.fit(X, y, reg__sample_weight=w)
     return pipe
 
@@ -118,6 +121,10 @@ def train_dnf_model(
     mode: WeekendMode,
     eval_year: int = 2026,
 ) -> Pipeline:
+    dnf_train = train[train["dnf"].notna()].copy()
+    labels = dnf_train["dnf"].astype(int)
+    if labels.nunique() < 2:
+        raise ValueError("DNF training requires both positive and negative labels")
     numeric, _ = feature_columns(mode)
     dnf_features = [
         c
@@ -139,18 +146,33 @@ def train_dnf_model(
     ]
     if not dnf_features:
         dnf_features = numeric[:8]
+    if mode == "post_sprint" and "sprint_position" in numeric:
+        dnf_features.append("sprint_position")
     pipe = make_dnf_pipeline(dnf_features)
-    X = train[dnf_features].copy()
+    X = dnf_train[dnf_features].copy()
     for c in dnf_features:
         if c not in X.columns:
             X[c] = np.nan
-    w = race_sample_weights(train, eval_year)
-    pipe.fit(X, train["dnf"].astype(int), clf__sample_weight=w)
+    w = race_sample_weights(dnf_train, eval_year)
+    pipe.fit(X, labels, clf__sample_weight=w)
     return pipe, dnf_features
 
 
 def predict_scores(ranker: Pipeline, df: pd.DataFrame, mode: WeekendMode) -> np.ndarray:
     X = _feature_matrix(df, mode)
+    # Older saved artifacts can still declare features removed from the safe
+    # allowlist. Keep their input schema loadable, but impute those columns so
+    # stale race/weather/sprint observations cannot enter current forecasts.
+    pre = ranker.named_steps.get("pre") if hasattr(ranker, "named_steps") else None
+    if pre is not None:
+        required = []
+        for name, _transformer, columns in pre.transformers:
+            if name == "num":
+                required.extend(list(columns))
+        for column in required:
+            if column not in X.columns:
+                X[column] = np.nan
+        X = X[required]
     return ranker.predict(X).astype(float)
 
 
@@ -159,7 +181,7 @@ def predict_dnf_probs(
 ) -> np.ndarray:
     X = df.copy()
     for c in dnf_features:
-        if c not in X.columns:
+        if c not in FEATURE_PRE_QUALI_NUM or c not in X.columns:
             X[c] = np.nan
     return dnf_model.predict_proba(X[dnf_features])[:, 1]
 
@@ -167,26 +189,14 @@ def predict_dnf_probs(
 def plackett_luce_sample_order(
     scores: np.ndarray, rng: np.random.Generator, n_samples: int = 8000
 ) -> np.ndarray:
-    """Return array shape (n_samples, n) of finish positions 1..n per sample."""
+    """Sample Plackett–Luce orders with the equivalent Gumbel-top-k method."""
     n = len(scores)
     if n == 0:
         return np.empty((0, 0), dtype=int)
-    results = np.zeros((n_samples, n), dtype=int)
-    for s in range(n_samples):
-        remaining = list(range(n))
-        order = []
-        for pos in range(n):
-            idxs = np.array(remaining)
-            w = np.exp(scores[idxs] - scores[idxs].max())
-            w = w / w.sum()
-            pick = rng.choice(idxs, p=w)
-            order.append(int(pick))
-            remaining.remove(int(pick))
-        ranks = np.empty(n, dtype=int)
-        for rank, drv in enumerate(order, start=1):
-            ranks[drv] = rank
-        results[s] = ranks
-    return results
+    logits = np.asarray(scores, dtype=float)
+    perturbed = logits[None, :] + rng.gumbel(size=(n_samples, n))
+    order = np.argsort(-perturbed, axis=1)
+    return np.argsort(order, axis=1) + 1
 
 
 def market_probs_from_scores(
@@ -196,41 +206,55 @@ def market_probs_from_scores(
     n_samples: int = 6000,
     seed: int = 42,
 ) -> dict[str, np.ndarray]:
-    """
-    Monte Carlo Plackett-Luce finish distribution.
-    DNF drivers get a heavy penalty in score space (expected P20+).
+    """Simulate DNF separately, then sample a Plackett–Luce classified order.
+
+    Position probabilities and expected finish are conditional on classification;
+    win, podium, points and DNF probabilities are unconditional race outcomes.
     """
     n = len(scores)
     adj = scores.astype(float) / max(temperature, 0.05)
-    if dnf_probs is not None:
-        adj = adj - dnf_probs.astype(float) * 3.0
-
     rng = np.random.default_rng(seed)
-    samples = plackett_luce_sample_order(adj, rng, n_samples=n_samples)
+    risk = (
+        np.clip(np.asarray(dnf_probs, dtype=float), 0.0, 1.0)
+        if dnf_probs is not None
+        else np.zeros(n)
+    )
+    retired = rng.random((n_samples, n)) < risk[None, :]
+    all_retired = retired.all(axis=1) if n else np.zeros(n_samples, dtype=bool)
+    # A completed race has at least one classified driver. In the vanishingly
+    # rare all-retired draw, keep the lowest-risk driver classified.
+    if n and all_retired.any():
+        retired[all_retired, int(np.argmin(risk))] = False
 
-    win = np.zeros(n)
-    podium = np.zeros(n)
-    points = np.zeros(n)
-    exp_finish = np.zeros(n)
-    for s in range(n_samples):
-        ranks = samples[s]
-        win[int(np.argmin(ranks))] += 1
-        for i in range(n):
-            r = ranks[i]
-            exp_finish[i] += r
-            if r <= 3:
-                podium[i] += 1
-            if r <= 10:
-                points[i] += 1
-    win /= n_samples
-    podium /= n_samples
-    points /= n_samples
-    exp_finish /= n_samples
+    perturbed = adj[None, :] + rng.gumbel(size=(n_samples, n))
+    perturbed[retired] = -np.inf
+    order = np.argsort(-perturbed, axis=1)
+    ranks = np.argsort(order, axis=1) + 1
+    ranks[retired] = 0
+
+    classified = ranks > 0
+    classified_n = classified.sum(axis=0)
+    position_probs = np.zeros((n, n), dtype=float)
+    for position in range(1, n + 1):
+        position_probs[:, position - 1] = np.divide(
+            (ranks == position).sum(axis=0),
+            classified_n,
+            out=np.full(n, np.nan, dtype=float),
+            where=classified_n > 0,
+        )
+    finish_sum = np.where(classified, ranks, 0).sum(axis=0)
     return {
-        "win_prob": win,
-        "podium_prob": podium,
-        "points_prob": points,
-        "expected_finish": exp_finish,
+        "win_prob": (ranks == 1).mean(axis=0),
+        "podium_prob": ((ranks >= 1) & (ranks <= 3)).mean(axis=0),
+        "points_prob": ((ranks >= 1) & (ranks <= 10)).mean(axis=0),
+        "expected_finish": np.divide(
+            finish_sum,
+            classified_n,
+            out=np.full(n, np.nan, dtype=float),
+            where=classified_n > 0,
+        ),
+        "finish_position_probs": position_probs,
+        "dnf_prob": retired.mean(axis=0),
     }
 
 
@@ -282,6 +306,7 @@ class WeekendRanker:
         podium = pd.Series(0.0, index=df.index)
         points = pd.Series(0.0, index=df.index)
         exp_finish = pd.Series(0.0, index=df.index)
+        max_positions = 0
 
         for (_, _), g in df.groupby(["season", "round"], sort=False):
             idx = g.index
@@ -298,11 +323,21 @@ class WeekendRanker:
             podium.loc[idx] = markets["podium_prob"]
             points.loc[idx] = markets["points_prob"]
             exp_finish.loc[idx] = markets["expected_finish"]
+            max_positions = max(max_positions, len(g))
+            for position in range(1, len(g) + 1):
+                col = f"finish_p{position}_prob"
+                if col not in out:
+                    out[col] = np.nan
+                out.loc[idx, col] = markets["finish_position_probs"][:, position - 1]
 
         out["win_prob"] = win
         out["podium_prob"] = podium
         out["points_prob"] = points
         out["expected_finish"] = exp_finish
+        for position in range(1, max_positions + 1):
+            col = f"finish_p{position}_prob"
+            if col not in out:
+                out[col] = np.nan
         out["win_prob_softmax"] = race_level_win_probs(
             df, pd.Series(scores, index=df.index), self.temperature, pd.Series(dnf_p, index=df.index)
         )

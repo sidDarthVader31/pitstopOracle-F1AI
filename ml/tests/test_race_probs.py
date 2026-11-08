@@ -8,6 +8,7 @@ import pytest
 
 from f1ml.eval import race_probs_from_binary, race_softmax
 from f1ml.modeling import apply_race_probs
+from f1ml.ranking import market_probs_from_scores, plackett_luce_sample_order
 
 
 def test_backmarker_not_on_softmax_floor():
@@ -40,3 +41,28 @@ def test_apply_race_probs_per_race_group():
     race1 = probs.iloc[:2]
     assert race1.iloc[0] > race1.iloc[1]
     assert race1.iloc[1] < 0.2
+
+
+def test_plackett_luce_samples_are_complete_and_reproducible():
+    scores = np.array([2.0, 0.5, -1.0])
+    a = plackett_luce_sample_order(scores, np.random.default_rng(42), n_samples=200)
+    b = plackett_luce_sample_order(scores, np.random.default_rng(42), n_samples=200)
+    assert np.array_equal(a, b)
+    assert np.all(np.sort(a, axis=1) == np.array([1, 2, 3]))
+    assert (a[:, 0] == 1).mean() > (a[:, 2] == 1).mean()
+
+
+def test_race_simulator_reports_dnf_and_classified_position_distribution():
+    result = market_probs_from_scores(
+        np.array([2.0, 1.0, 0.0]),
+        np.array([0.0, 0.5, 0.99]),
+        n_samples=1000,
+        seed=17,
+    )
+    assert np.allclose(result["finish_position_probs"].sum(axis=1), 1.0)
+    assert result["dnf_prob"][0] == 0.0
+    assert result["dnf_prob"][1] == pytest.approx(0.5, abs=0.05)
+    assert result["dnf_prob"][2] > 0.98
+    assert result["win_prob"].sum() == pytest.approx(1.0)
+    assert result["podium_prob"][2] < 0.03
+    assert result["expected_finish"][2] >= 1.0

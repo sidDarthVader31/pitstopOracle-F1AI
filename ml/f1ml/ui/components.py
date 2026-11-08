@@ -96,6 +96,8 @@ def render_prediction_block(
         st.success("Grid-set forecast — official starting positions and penalties applied.")
     elif mode == "post_quali":
         st.success("Post-qualifying forecast — quali included; grid may still update.")
+    elif mode == "post_sprint":
+        st.success("Post-sprint forecast — qualifying, official grid, and completed sprint included.")
 
     bullets = driver_insight_bullets(scored.iloc[0])
     if bullets:
@@ -108,6 +110,8 @@ def render_prediction_block(
         st.plotly_chart(win_prob_bar(scored), use_container_width=True)
     with col_b:
         st.plotly_chart(podium_strip(scored), use_container_width=True)
+
+    st.caption("Finish-position probabilities and expected finish are conditional on being classified. DNF probability is shown separately.")
 
     if "expected_fantasy_pts" in scored.columns:
         st.plotly_chart(fantasy_pts_bar(scored), use_container_width=True)

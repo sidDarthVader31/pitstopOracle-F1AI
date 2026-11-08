@@ -183,6 +183,30 @@ def quali_gap_probabilities(df: pd.DataFrame, temperature: float = 0.5) -> pd.Se
     return probs
 
 
+def prior_form_probabilities(df: pd.DataFrame, temperature: float = 1.0) -> pd.Series:
+    """Fixed pre-quali baseline from shifted car and driver ratings."""
+    scores = -df.get("car_driver_combo", pd.Series(0.0, index=df.index)).fillna(0.0).astype(float)
+    probs = pd.Series(0.0, index=df.index)
+    for g in race_groups(df):
+        probs.loc[g.index] = race_softmax(scores.loc[g.index].to_numpy(), temperature)
+    return probs
+
+
+def grid_probabilities(df: pd.DataFrame, temperature: float = 2.0) -> pd.Series:
+    """Fixed post-quali baseline based on the official grid order."""
+    probs = pd.Series(0.0, index=df.index)
+    for g in race_groups(df):
+        if "grid" not in g or g["grid"].notna().sum() == 0:
+            n = len(g)
+            probs.loc[g.index] = 1.0 / n if n else 0.0
+            continue
+        grid = g["grid"].astype(float)
+        worst = float(grid.max()) if grid.notna().any() else float(len(g))
+        grid = grid.fillna(worst + 5.0)
+        probs.loc[g.index] = race_softmax(-grid.to_numpy(), temperature)
+    return probs
+
+
 def pole_probabilities(df: pd.DataFrame) -> pd.Series:
     """One-hot pole sitter as probability distribution per race."""
     probs = pd.Series(0.0, index=df.index)
