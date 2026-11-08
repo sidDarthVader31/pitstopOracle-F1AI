@@ -1,10 +1,14 @@
-"""Feature specifications for pre-quali vs post-quali models."""
+"""Feature specifications for fixed pre- and post-qualifying cutoffs.
+
+Current-weekend practice, weather and sprint inputs stay out of the model until
+their historical availability at the forecast cutoff can be reproduced.
+"""
 
 from __future__ import annotations
 
 from typing import Literal
 
-WeekendMode = Literal["pre_quali", "post_quali"]
+WeekendMode = Literal["pre_quali", "post_quali", "post_sprint"]
 
 ERA_RESET_YEAR = 2026
 
@@ -30,19 +34,14 @@ FEATURE_PRE_QUALI_NUM = [
     "circuit_avg_finish_prior",
     "circuit_grid_to_finish_delta",
     "teammate_quali_h2h_rate",
-    "is_wet",
-    "has_sprint",
     "round",
-    "precipitation_mm",
-    "fp1_best_lap_delta",
-    "fp2_best_lap_delta",
-    "fp3_best_lap_delta",
-    "fp_best_delta",
-    "fp_longrun_delta",
-    "race_pace_delta",
     "pit_stops_avg",
     "pit_time_avg_s",
     "regs_era",
+    "circuit_street",
+    "car_street_interaction",
+    "circuit_sc_rate_prior",
+    "circuit_vsc_rate_prior",
 ]
 
 FEATURE_POST_QUALI_EXTRA = [
@@ -54,8 +53,9 @@ FEATURE_POST_QUALI_EXTRA = [
     "best_quali_seconds",
     "quali_vs_teammate",
     "teammate_quali_gap_s",
-    "sprint_position",
 ]
+
+FEATURE_POST_SPRINT_EXTRA = ["sprint_position"]
 
 FEATURE_CAT: list[str] = []
 
@@ -79,10 +79,12 @@ def season_range_label(seasons: set[int]) -> str:
 def feature_columns(mode: WeekendMode) -> tuple[list[str], list[str]]:
     """Return (numeric, categorical) column lists for a weekend mode."""
     numeric = list(FEATURE_PRE_QUALI_NUM)
-    if mode == "post_quali":
+    if mode in ("post_quali", "post_sprint"):
         numeric = numeric + FEATURE_POST_QUALI_EXTRA
+    if mode == "post_sprint":
+        numeric = numeric + FEATURE_POST_SPRINT_EXTRA
     return numeric, list(FEATURE_CAT)
 
 
 def all_numeric_columns() -> list[str]:
-    return FEATURE_PRE_QUALI_NUM + FEATURE_POST_QUALI_EXTRA
+    return FEATURE_PRE_QUALI_NUM + FEATURE_POST_QUALI_EXTRA + FEATURE_POST_SPRINT_EXTRA

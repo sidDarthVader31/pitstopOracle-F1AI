@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from f1ml.eval import quali_gap_probabilities, race_probs_from_binary, race_softmax
-from f1ml.ranking import market_probs_from_scores
+from f1ml.ranking import market_probs_from_scores, predict_dnf_probs, predict_scores, train_dnf_model
 from f1ml.ratings import ERA_RESET_YEAR, build_ratings
 
 
@@ -55,6 +57,92 @@ def test_ratings_no_leakage_from_current_race():
     assert r2["car_pace_ewma"].notna().all()
     r3 = rated[rated["round"] == 3]
     assert (r3["car_pace_ewma"] != r2["car_pace_ewma"].values[0]).any()
+
+
+def test_constructor_ratings_are_shared_within_each_event():
+    df = pd.DataFrame(
+        {
+            "season": [2025, 2025, 2025, 2025],
+            "round": [1, 1, 2, 2],
+            "driver_id": ["a", "b", "a", "b"],
+            "constructor_id": ["team", "team", "team", "team"],
+            "best_quali_seconds": [90.0, 95.0, 91.0, 92.0],
+            "position": [1, 20, 20, 1],
+            "dnf": [0, 1, 1, 0],
+            "fp_longrun_delta": [0.0, 4.0, 5.0, 0.0],
+            "race_pace_delta": [0.0, 4.0, 5.0, 0.0],
+            "fp3_best_lap_delta": [0.0, 4.0, 5.0, 0.0],
+            "fp2_best_lap_delta": [0.0, 4.0, 5.0, 0.0],
+        }
+    )
+    rated = build_ratings(df)
+    for _key, race in rated.groupby(["season", "round"]):
+        assert race["car_pace_ewma"].nunique() == 1
+        assert race["dnf_hazard_car"].nunique() == 1
+
+
+def test_dnf_training_receives_both_labels_even_when_position_missing(monkeypatch):
+    seen = {}
+
+    class Recorder:
+        def fit(self, x, y, **kwargs):
+            seen["labels"] = set(y.astype(int))
+            seen["rows"] = len(x)
+            return self
+
+    monkeypatch.setattr("f1ml.ranking.make_dnf_pipeline", lambda _features: Recorder())
+    monkeypatch.setattr("f1ml.ranking.race_sample_weights", lambda df, eval_year=2026: np.ones(len(df)))
+    frame = pd.DataFrame(
+        {
+            "season": [2025, 2025, 2025, 2025],
+            "position": [1.0, np.nan, 4.0, np.nan],
+            "dnf": [0, 1, 0, 1],
+            "car_pace_ewma": [0.0, 0.1, 0.2, 0.3],
+            "driver_skill_ewma": [0.0, 0.1, 0.2, 0.3],
+            "dnf_hazard_car": [0.1] * 4,
+            "dnf_hazard_driver": [0.1] * 4,
+            "dnf_hazard_combined": [0.2] * 4,
+            "constructor_id_dnf_rate_last_5": [0.1] * 4,
+            "driver_id_dnf_rate_last_5": [0.1] * 4,
+            "circuit_grid_to_finish_delta": [0.0] * 4,
+            "round": [1, 1, 2, 2],
+        }
+    )
+    train_dnf_model(frame, "pre_quali")
+    assert seen["labels"] == {0, 1}
+    assert seen["rows"] == 4
+
+
+def test_stale_saved_model_features_are_imputed_not_read_from_current_event():
+    seen = {}
+
+    class OldRanker:
+        named_steps = {
+            "pre": SimpleNamespace(transformers=[("num", object(), ["car_driver_combo", "race_pace_delta", "is_wet"])])
+        }
+
+        def predict(self, x):
+            seen["rank_x"] = x.copy()
+            return np.zeros(len(x))
+
+    class OldDnf:
+        def predict_proba(self, x):
+            seen["dnf_x"] = x.copy()
+            return np.column_stack([np.full(len(x), 0.5), np.full(len(x), 0.5)])
+
+    frame = pd.DataFrame(
+        {
+            "car_driver_combo": [1.0],
+            "race_pace_delta": [15.0],
+            "is_wet": [1],
+            "precipitation_mm": [10.0],
+        }
+    )
+    predict_scores(OldRanker(), frame, "pre_quali")
+    predict_dnf_probs(OldDnf(), frame, ["driver_id_dnf_rate_last_5", "is_wet"])
+    assert pd.isna(seen["rank_x"].loc[0, "race_pace_delta"])
+    assert pd.isna(seen["rank_x"].loc[0, "is_wet"])
+    assert pd.isna(seen["dnf_x"].loc[0, "is_wet"])
 
 
 def test_era_reset_constructor_prior():

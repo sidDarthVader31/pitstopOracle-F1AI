@@ -10,16 +10,18 @@ import numpy as np
 import pandas as pd
 
 from f1ml.calendar import next_upcoming_race as calendar_next_upcoming_race
+from f1ml.features import attach_circuit_type_feature
 from f1ml.fantasy import constructor_fantasy_points, expected_driver_fantasy_points, oracle_xi
 from f1ml.modeling import WeekendModels, apply_race_probs, feature_matrix, plackett_luce_win_probs, raw_win_scores
 from f1ml.ranking import WeekendRanker
+from f1ml.safety_car import add_upcoming_circuit_safety_features
 from f1ml.paths import MODELS, PROCESSED, RAW, REPORTS, CANONICAL
 from f1ml.ratings import latest_ratings_before_round
 from f1ml.specs import ERA_RESET_YEAR, WeekendMode
 from f1ml.starting_grid import apply_grid_to_frame, grid_metadata, penalty_callouts
 
 ModelKind = Literal["hgb", "logreg", "lgbm", "rf"]  # lgbm/rf aliases for hgb
-RaceMode = Literal["complete", "post_quali", "pre_quali", "grid_set"]
+RaceMode = Literal["complete", "post_quali", "post_sprint", "pre_quali", "grid_set"]
 WeekendPhase = Literal["practice", "qualifying", "grid_set", "race", "complete"]
 
 
@@ -55,6 +57,8 @@ def clear_prediction_caches() -> None:
 
 def inference_mode(race_mode: RaceMode) -> WeekendMode:
     """Map UI race status to model bundle."""
+    if race_mode == "post_sprint":
+        return "post_sprint"
     if race_mode in ("post_quali", "grid_set", "complete"):
         return "post_quali"
     return "pre_quali"
@@ -77,6 +81,7 @@ def list_races(df: pd.DataFrame | None = None) -> pd.DataFrame:
             circuit_name=("circuit_name", "first"),
             country=("country", "first"),
             has_winner=("won", "max"),
+            has_sprint_result=("sprint_position", lambda s: (s > 0).any()),
             n_drivers=("driver_id", "count"),
         )
         .sort_values(["season", "round"])
@@ -96,10 +101,18 @@ def list_calendar_races() -> pd.DataFrame:
         .agg(
             has_winner=("won", "max"),
             has_quali=("quali_position", lambda s: s.notna().any()),
+            has_sprint_result=("sprint_position", lambda s: (s > 0).any()),
             n_drivers=("driver_id", "count"),
         )
     )
     races = calendar.merge(status, on=["season", "round"], how="left")
+    raw_sprints = _raw_sprint_status()
+    if not raw_sprints.empty:
+        races = races.merge(raw_sprints, on=["season", "round"], how="left", suffixes=("", "_raw"))
+        races["has_sprint_result"] = races["has_sprint_result"].fillna(False) | races[
+            "has_sprint_result_raw"
+        ].fillna(False)
+        races = races.drop(columns=["has_sprint_result_raw"], errors="ignore")
     raw_quali = _raw_quali_status()
     if not raw_quali.empty:
         races = races.merge(raw_quali, on=["season", "round"], how="left", suffixes=("", "_raw"))
@@ -107,6 +120,7 @@ def list_calendar_races() -> pd.DataFrame:
         races = races.drop(columns=["has_quali_raw"], errors="ignore")
     races["has_winner"] = races["has_winner"].fillna(0).astype(int)
     races["has_quali"] = races["has_quali"].fillna(False).astype(bool)
+    races["has_sprint_result"] = races["has_sprint_result"].fillna(False).astype(bool)
     races["n_drivers"] = races["n_drivers"].fillna(0).astype(int)
     races["status"] = races.apply(_race_status_row, axis=1)
     races["label"] = races.apply(
@@ -118,6 +132,8 @@ def list_calendar_races() -> pd.DataFrame:
 def _race_status_row(row: pd.Series) -> RaceMode:
     if int(row.get("has_winner", 0)) == 1:
         return "complete"
+    if bool(row.get("has_sprint_result", False)):
+        return "post_sprint"
     season, rnd = int(row["season"]), int(row["round"])
     meta = grid_metadata(season, rnd)
     if meta.get("has_grid"):
@@ -130,6 +146,8 @@ def _race_status_row(row: pd.Series) -> RaceMode:
 def race_status(race_df: pd.DataFrame, season: int | None = None, round_num: int | None = None) -> RaceMode:
     if race_df["won"].max() == 1:
         return "complete"
+    if "sprint_position" in race_df and (race_df["sprint_position"] > 0).any():
+        return "post_sprint"
     if season is not None and round_num is not None:
         meta = grid_metadata(season, round_num)
         if meta.get("has_grid"):
@@ -164,6 +182,7 @@ def status_label(mode: RaceMode) -> str:
     return {
         "complete": "Race complete",
         "grid_set": "Grid set",
+        "post_sprint": "Post-sprint",
         "post_quali": "Post-qualifying",
         "pre_quali": "Pre-qualifying",
     }[mode]
@@ -221,6 +240,16 @@ def _raw_quali_status() -> pd.DataFrame:
     return (
         quali.groupby(["season", "round"], as_index=False)
         .agg(has_quali=("quali_position", lambda s: s.notna().any()))
+    )
+
+
+def _raw_sprint_status() -> pd.DataFrame:
+    path = RAW / "sprints.parquet"
+    if not path.exists():
+        return pd.DataFrame(columns=["season", "round", "has_sprint_result"])
+    sprints = pd.read_parquet(path)
+    return sprints.groupby(["season", "round"], as_index=False).agg(
+        has_sprint_result=("sprint_position", lambda s: (s > 0).any())
     )
 
 
@@ -297,7 +326,7 @@ def _apply_upcoming_session_data(
         ):
             out[col] = np.nan
         out["has_sprint"] = 0
-        out["sprint_position"] = -1
+        out["sprint_position"] = np.nan
         out["sprint_points"] = np.nan
         return out
 
@@ -349,10 +378,10 @@ def _apply_upcoming_session_data(
             how="left",
         )
         out["has_sprint"] = 1
-        out["sprint_position"] = out["sprint_position"].fillna(-1)
+        out["sprint_position"] = out["sprint_position"].fillna(np.nan)
     else:
         out["has_sprint"] = 0
-        out["sprint_position"] = -1
+        out["sprint_position"] = np.nan
         out["sprint_points"] = np.nan
     return out
 
@@ -372,6 +401,14 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
     prior = season_hist[season_hist["round"] < round_num]
 
     out = prev.copy()
+    stale_event_cols = [
+        "quali_position", "quali_gap_s", "quali_gap_to_median_s", "quali_vs_teammate",
+        "teammate_quali_gap_s", "best_quali_seconds", "q3_seconds", "grid", "grid_vs_quali",
+        "sprint_position", "sprint_points", "fp1_best_lap_delta", "fp2_best_lap_delta",
+        "fp3_best_lap_delta", "fp_best_delta", "fp_longrun_delta", "race_pace_delta",
+        "is_wet", "precipitation_mm", "rain_mm", "weathercode",
+    ]
+    out[stale_event_cols] = np.nan
     out["round"] = round_num
     out["race_name"] = meta["race_name"]
     out["date"] = meta["date"]
@@ -423,11 +460,13 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
     out["circuit_avg_finish_prior"] = (
         circuit_hist.groupby("driver_id")["position"].mean().reindex(out["driver_id"]).values
     )
-    out["circuit_grid_to_finish_delta"] = (
-        circuit_hist.groupby("circuit_id")["grid_finish_delta"].mean().iloc[0]
-        if "grid_finish_delta" in circuit_hist.columns and len(circuit_hist) >= 3
-        else 0.0
+    circuit_events = circuit_hist.drop_duplicates(["season", "round"]).sort_values(["season", "round"])
+    circuit_value = (
+        circuit_events["circuit_grid_to_finish_delta"].iloc[-1]
+        if "circuit_grid_to_finish_delta" in circuit_events and not circuit_events.empty
+        else np.nan
     )
+    out["circuit_grid_to_finish_delta"] = circuit_value
     out["teammate_quali_h2h_rate"] = (
         prior.groupby("driver_id")["beat_teammate_quali"].mean().reindex(out["driver_id"]).values
         if "beat_teammate_quali" in prior.columns
@@ -464,6 +503,15 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
         out["dnf_hazard_combined"] = 0.24
 
     out["regs_era"] = 1 if season >= ERA_RESET_YEAR else 0
+    out = attach_circuit_type_feature(out)
+    safety_labels_path = RAW / "openf1_safety_car_labels.parquet"
+    if safety_labels_path.exists():
+        out = add_upcoming_circuit_safety_features(
+            out, pd.read_parquet(safety_labels_path), season, round_num
+        )
+    else:
+        out["circuit_sc_rate_prior"] = np.nan
+        out["circuit_vsc_rate_prior"] = np.nan
     if out["quali_position"].notna().any():
         pole = out["best_quali_seconds"].min()
         out["quali_gap_s"] = out["best_quali_seconds"] - pole
@@ -477,10 +525,10 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
     out["fp_best_delta"] = out["fp_best_delta"].fillna(out.get("fp1_best_lap_delta", np.nan))
     out["fp_longrun_delta"] = out["fp_best_delta"]
 
-    if "is_wet" not in out.columns or out["is_wet"].isna().all():
-        out["is_wet"] = 0
-    if "precipitation_mm" not in out.columns or out["precipitation_mm"].isna().all():
-        out["precipitation_mm"] = 0.0
+    if "is_wet" not in out.columns:
+        out["is_wet"] = np.nan
+    if "precipitation_mm" not in out.columns:
+        out["precipitation_mm"] = np.nan
     out["position"] = np.nan
     out["won"] = 0
     out["podium"] = 0
@@ -604,15 +652,20 @@ def display_columns(scored: pd.DataFrame) -> pd.DataFrame:
         "win_prob", "podium_prob", "dnf_prob", "expected_finish", "expected_fantasy_pts",
         "champ_position_before", "is_wet",
     ]
+    finish_cols = sorted(
+        (c for c in scored.columns if c.startswith("finish_p") and c.endswith("_prob")),
+        key=lambda c: int(c.removeprefix("finish_p").removesuffix("_prob")),
+    )
+    cols.extend(finish_cols)
     view = scored[[c for c in cols if c in scored.columns]].copy()
-    for c in ("win_prob", "podium_prob", "dnf_prob"):
+    for c in ("win_prob", "podium_prob", "dnf_prob", *finish_cols):
         if c in view.columns:
             view[c] = (view[c] * 100).round(1)
     if "expected_finish" in view.columns:
         view["expected_finish"] = view["expected_finish"].round(1)
     if "expected_fantasy_pts" in view.columns:
         view["expected_fantasy_pts"] = view["expected_fantasy_pts"].round(1)
-    return view.rename(
+    view = view.rename(
         columns={
             "given_name": "First",
             "family_name": "Last",
@@ -622,11 +675,14 @@ def display_columns(scored: pd.DataFrame) -> pd.DataFrame:
             "win_prob": "Win %",
             "podium_prob": "Podium %",
             "dnf_prob": "DNF %",
-            "expected_finish": "Exp finish",
+            "expected_finish": "Exp finish if classified",
             "expected_fantasy_pts": "Fantasy pts",
             "champ_position_before": "Champ pos",
             "is_wet": "Wet",
         }
+    )
+    return view.rename(
+        columns={col: f"P{int(col.removeprefix('finish_p').removesuffix('_prob'))} %" for col in finish_cols}
     )
 
 

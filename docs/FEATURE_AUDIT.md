@@ -1,8 +1,24 @@
-# Feature / cutoff audit (Phase 1, Milestones 0–1)
+# Feature / cutoff audit (Phase 1)
 
-This document is the Milestone 0 reconnaissance plus the Milestone 1 feature/cutoff audit required by [`PHASE_1_FORECAST_PLAN.md`](PHASE_1_FORECAST_PLAN.md). **No production model code was changed.** Proposed edits for Milestones 2–3 are listed at the end for review.
+This document began as the Milestone 0 reconnaissance and Milestone 1 feature/cutoff audit required by [`PHASE_1_FORECAST_PLAN.md`](PHASE_1_FORECAST_PLAN.md). The owner has since authorized execution through the Phase A baseline gate. The original inventory below is retained as a historical snapshot; the current effective feature allowlist and implementation status are recorded in the Phase A section.
 
 Counts below were taken from local parquet on `codex/phase1-forecast-plan` (processed table dated with 2022–2026 through Mexico City 2026 R19). Do not treat README hit rates as current.
+
+## Phase A execution status
+
+Implemented and evaluated the cutoff-safe baseline. The experiment record is [`experiments/EXP-001-cutoff-safe-baseline.md`](experiments/EXP-001-cutoff-safe-baseline.md), and the reproducible run summary is [`../ml/reports/EVAL.md`](../ml/reports/EVAL.md).
+
+The current feature allowlist in `ml/f1ml/specs.py` is authoritative and supersedes the historical feature table later in this audit. Pre-quali uses these features:
+
+`car_pace_ewma`, `driver_skill_ewma`, `car_driver_combo`, `champ_position_before`, `champ_points_before`, `champ_wins_before`, `driver_id_points_last_3`, `driver_id_points_last_5`, `driver_id_avg_finish_last_5`, `driver_id_dnf_rate_last_5`, `constructor_id_points_last_3`, `constructor_id_points_last_5`, `constructor_id_avg_finish_last_5`, `constructor_id_dnf_rate_last_5`, `dnf_hazard_car`, `dnf_hazard_driver`, `dnf_hazard_combined`, `circuit_avg_finish_prior`, `circuit_grid_to_finish_delta`, `teammate_quali_h2h_rate`, `round`, `pit_stops_avg`, `pit_time_avg_s`, `regs_era`.
+
+Post-quali adds `quali_position`, `quali_gap_s`, `quali_gap_to_median_s`, `grid`, `grid_vs_quali`, `best_quali_seconds`, `quali_vs_teammate`, and `teammate_quali_gap_s`. Current-event race pace, practice-session pace, observed weather, and sprint results are excluded because the repository lacks historical snapshots proving those values were available at the forecast cutoff. `circuit_grid_to_finish_delta` remains missing until enough prior circuit visits exist (1,505 missing values in the rebuilt local table); the model imputes it during fitting, while the feature table preserves it as missing.
+
+Other completed corrections: Jolpica `Lapped` is classified; FP long-run fallback retains FP3→FP2→FP1 precedence; circuit history is aggregated and shifted by race; constructor rating updates are applied once per event and shared among teammates; upcoming-event rows clear stale current-weekend values; DNF training retains classified and non-classified labeled rows even when numeric position is missing; expanding folds keep each full event together and use only earlier data; the walk-forward scorer follows the production Plackett–Luce path. Candidate training writes evaluation reports only and does not save or promote model artifacts.
+
+Phase A and the supported parts of Stages 1–6 have been implemented. The DNF-aware simulator and three forecast cutoffs (`pre_quali`, `post_quali_pre_sprint`, `post_sprint`) are present, along with candidate-only training and immutable snapshot tooling. OpenF1 circuit type and shifted circuit SC/VSC history are sourced features. The SC/VSC logistic candidates underperformed expanding-prevalence baselines and remain outside production forecasts. High/low-speed car traits, geometry, pit-lane loss, historic forecast-weather snapshots, and reliable 2022 SC/VSC labels remain unavailable and deferred. See [`EXP-002`](experiments/EXP-002-data-safety-sprint-simulator.md) and [`DATASET.md`](DATASET.md).
+
+The initial 19-race 2026 result remains a small diagnostic. Post-quali performance did not beat the grid/quali-gap baselines on log loss, and no candidate model was promoted. Historical practice/weather cutoff snapshots and evidence for circuit interactions remain open experiment questions.
 
 ---
 
@@ -178,7 +194,7 @@ Previous plus `sprint_position` (null if the driver did not take part; do not us
 
 ---
 
-## Proposed Milestone 2 tests (do not implement yet)
+## Original proposed Milestone 2 tests (historical plan)
 
 Add synthetic tests in `ml/tests/` (no network):
 
@@ -195,7 +211,7 @@ Add synthetic tests in `ml/tests/` (no network):
 
 ---
 
-## Proposed Milestone 3 code changes (do not implement yet)
+## Original proposed Milestone 3 code changes (historical plan)
 
 Smallest coherent diffs after this review:
 
@@ -231,7 +247,7 @@ Do **not** add circuit geometry, neural nets, or forecast snapshot stores in Mil
 
 ---
 
-## What this audit is not claiming
+## What the original audit snapshot is not claiming
 
 - Ratings EWMAs are leak-free for the **current** row; they still **use** race pace to update the next row, which is intended.
 - Pit and rolling form look correctly shifted; they still need tests.
@@ -240,6 +256,6 @@ Do **not** add circuit geometry, neural nets, or forecast snapshot stores in Mil
 
 ---
 
-## Stop for review
+## Phase gate
 
-Milestones 0 and 1 are complete. Next, after approval: Milestone 2 tests, then the spec/feature/train edits above, then a corrected walk-forward report (Milestone 4).
+Milestones 0–4 of the companion Phase 1 plan have been executed to the extent supported by the current local data, with the Phase A implementation and evaluation captured above. The next action is owner review of this baseline gate. In particular, the post-quali model failed to beat simple grid/quali-gap log-loss baselines in the 2026 evaluation, so Phase B model comparisons should begin only after the owner accepts this diagnostic baseline and its limitations.

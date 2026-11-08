@@ -5,9 +5,9 @@ import pandas as pd
 
 from f1ml.paths import CANONICAL, PROCESSED, RAW
 from f1ml.ratings import build_ratings
+from f1ml.safety_car import add_prior_circuit_safety_features
 
-CLASSIFIED = ("Finished",)
-DNF_PREFIX_OK = ("+",)  # +1 Lap, +2 Laps, ...
+CLASSIFIED = ("Finished", "Lapped")
 
 
 def _is_classified(status: str | None) -> bool:
@@ -16,6 +16,14 @@ def _is_classified(status: str | None) -> bool:
     if status in CLASSIFIED:
         return True
     return status.startswith("+") and "Lap" in status
+
+
+def _dnf_labels(status: pd.Series) -> pd.Series:
+    """Return retirement/non-classification labels; exclude DNS, DSQ, and withdrawal."""
+    normalized = status.fillna("").astype(str)
+    labels = (~normalized.map(_is_classified)).astype(float)
+    labels.loc[normalized.isin({"Did not start", "Disqualified", "Withdrew"})] = np.nan
+    return labels
 
 
 def _parse_pit_duration(value: str | float | None) -> float | None:
@@ -60,6 +68,7 @@ def _merge_fp_pace(df: pd.DataFrame) -> pd.DataFrame:
         "FP3": ("fp3_best_lap_delta", "FP3_LONGRUN"),
         "Race": ("race_pace_delta", None),
     }
+    longrun_candidates: dict[str, pd.Series] = {}
     for session, (best_col, long_col) in session_map.items():
         sub = fp[fp["session_type"] == session].copy()
         if sub.empty:
@@ -87,17 +96,22 @@ def _merge_fp_pace(df: pd.DataFrame) -> pd.DataFrame:
                 long_sub["fp_longrun_delta"] = (
                     long_sub["best_lap_seconds"] - long_sub["session_median"]
                 )
-                lmerge = long_sub[["season", "round", "driver_id", "fp_longrun_delta"]]
-                df = df.drop(columns=["fp_longrun_delta"], errors="ignore")
-                df = df.merge(lmerge, on=["season", "round", "driver_id"], how="left")
+                lmerge = long_sub.set_index(["season", "round", "driver_id"])[
+                    "fp_longrun_delta"
+                ]
+                longrun_candidates[session] = lmerge
 
     df["fp_best_delta"] = df["fp3_best_lap_delta"].fillna(df["fp2_best_lap_delta"]).fillna(
         df["fp1_best_lap_delta"]
     )
-    if "fp_longrun_delta" in df.columns:
-        pass
-    else:
-        df["fp_longrun_delta"] = df["fp_best_delta"]
+    keys = pd.MultiIndex.from_frame(df[["season", "round", "driver_id"]])
+    df["fp_longrun_delta"] = np.nan
+    for session in ("FP3", "FP2", "FP1"):
+        values = longrun_candidates.get(session)
+        if values is not None:
+            df["fp_longrun_delta"] = df["fp_longrun_delta"].fillna(
+                pd.Series(values.reindex(keys).to_numpy(), index=df.index)
+            )
     df["fp_longrun_delta"] = df["fp_longrun_delta"].fillna(df["fp_best_delta"])
     return df
 
@@ -188,6 +202,54 @@ def _rolling_by_entity(df: pd.DataFrame, entity: str, windows: tuple[int, ...] =
     return out
 
 
+def _add_circuit_history_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add circuit summaries using completed prior events only."""
+    out = df.sort_values(["date", "season", "round", "driver_id"]).copy()
+    out["grid_finish_delta"] = out["grid"] - out["position"]
+    circuit_races = (
+        out.groupby(["season", "round", "circuit_id"], as_index=False)
+        .agg(race_grid_finish_delta=("grid_finish_delta", "mean"))
+        .sort_values(["season", "round"])
+    )
+    circuit_races["circuit_grid_to_finish_delta"] = circuit_races.groupby(
+        "circuit_id", sort=False
+    )["race_grid_finish_delta"].transform(
+        lambda s: s.shift(1).expanding(min_periods=3).mean()
+    )
+    out = out.merge(
+        circuit_races[["season", "round", "circuit_id", "circuit_grid_to_finish_delta"]],
+        on=["season", "round", "circuit_id"],
+        how="left",
+    )
+    out["circuit_avg_finish_prior"] = (
+        out.sort_values(["date", "season", "round", "driver_id"])
+        .groupby(["driver_id", "circuit_id"], sort=False)["position"]
+        .transform(lambda s: s.shift(1).expanding(min_periods=1).mean())
+    )
+    return out
+
+
+def attach_circuit_type_feature(df: pd.DataFrame) -> pd.DataFrame:
+    """Attach a sourced street-circuit flag where OpenF1 meeting data exists."""
+    out = df.drop(columns=["circuit_type", "circuit_street", "car_street_interaction"], errors="ignore").copy()
+    path = RAW / "openf1_race_sessions.parquet"
+    if path.exists():
+        metadata = pd.read_parquet(path)
+        if {"season", "round", "circuit_type"}.issubset(metadata.columns):
+            metadata = metadata[["season", "round", "circuit_type"]].drop_duplicates(
+                ["season", "round"]
+            )
+            out = out.merge(metadata, on=["season", "round"], how="left")
+        else:
+            out["circuit_type"] = np.nan
+    else:
+        out["circuit_type"] = np.nan
+    street = out["circuit_type"].astype("string").str.contains("street", case=False, na=pd.NA)
+    out["circuit_street"] = street.astype("Float64").astype(float)
+    out["car_street_interaction"] = out.get("car_pace_ewma", np.nan) * out["circuit_street"]
+    return out
+
+
 def build_driver_race() -> pd.DataFrame:
     races = pd.read_parquet(RAW / "races.parquet")
     results = pd.read_parquet(RAW / "results.parquet")
@@ -266,7 +328,7 @@ def build_driver_race() -> pd.DataFrame:
         0.0,
     ]
 
-    df["dnf"] = (~df["status"].map(_is_classified)).astype(int)
+    df["dnf"] = _dnf_labels(df["status"])
     df["won"] = (df["position"] == 1).astype(int)
     df["points_finish"] = (df["position"] <= 10).astype(int)
     df["podium"] = df["position"].isin([1, 2, 3]).astype(int)
@@ -323,19 +385,14 @@ def build_driver_race() -> pd.DataFrame:
         .transform(lambda s: s.shift(1).rolling(5, min_periods=1).mean())
     )
 
-    df = df.sort_values(["date", "season", "round"])
-    df["grid_finish_delta"] = df["grid"] - df["position"]
-    circuit_overtake = (
-        df.groupby("circuit_id")["grid_finish_delta"]
-        .transform(lambda s: s.shift(1).expanding(min_periods=3).mean())
-    )
-    df["circuit_grid_to_finish_delta"] = circuit_overtake.fillna(0.0)
-
-    df = df.sort_values(["date", "season", "round"])
-    df["circuit_avg_finish_prior"] = (
-        df.groupby(["driver_id", "circuit_id"], sort=False)["position"]
-        .transform(lambda s: s.shift(1).expanding(min_periods=1).mean())
-    )
+    df = _add_circuit_history_features(df)
+    safety_labels_path = RAW / "openf1_safety_car_labels.parquet"
+    if safety_labels_path.exists():
+        safety_labels = pd.read_parquet(safety_labels_path)
+        df = add_prior_circuit_safety_features(df, safety_labels)
+    else:
+        df["circuit_sc_rate_prior"] = np.nan
+        df["circuit_vsc_rate_prior"] = np.nan
 
     df = _merge_fp_pace(df)
     df = _merge_pitstops(df)
@@ -346,6 +403,7 @@ def build_driver_race() -> pd.DataFrame:
 
     # Ratings + pace gaps (shifted car/driver EWMA, quali_gap_s, etc.).
     df = build_ratings(df)
+    df = attach_circuit_type_feature(df)
 
     numeric_fill = [
         "quali_position",
@@ -387,6 +445,9 @@ def build_driver_race() -> pd.DataFrame:
         "pit_stops_avg",
         "pit_time_avg_s",
         "regs_era",
+        "circuit_street",
+        "car_street_interaction",
+        "sprint_position",
     ]
     for col in numeric_fill:
         if col in df.columns:

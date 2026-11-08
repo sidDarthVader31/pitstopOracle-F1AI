@@ -38,6 +38,10 @@ erDiagram
 | `data/canonical/starting_grid.parquet` | season × round × driver | OpenF1 + manual |
 | `data/canonical/fp_pace.parquet` | season × round × driver × session | OpenF1 |
 | `data/canonical/weather_forecast.parquet` | season × round | Open-Meteo forecast |
+| `data/raw/openf1_meetings.parquet` | season × round | OpenF1 meeting metadata |
+| `data/raw/openf1_race_sessions.parquet` | season × round | OpenF1 race session keys and circuit metadata |
+| `data/raw/openf1_race_control.parquet` | race-control message | OpenF1 messages with UTC timestamps |
+| `data/raw/openf1_safety_car_labels.parquet` | season × round | Derived deployed SC/VSC labels |
 | `data/manual/starting_grid.csv` | overrides | Manual |
 | `data/manual/fantasy_prices.csv` | season × round × entity | Manual |
 | `data/processed/driver_race.parquet` | season × round × driver | `features.build_driver_race()` |
@@ -101,3 +105,13 @@ Live weekend grid without Jolpica: use OpenF1 `starting_grid` + `manual/starting
 | `grid` | Pre-quali; falls back to quali only if no starting grid source |
 | `fp*_best_lap_delta` | Practice data not yet ingested |
 | `champ_position_before` | Round 1 (no prior standings) |
+
+## Provenance and current coverage
+
+Run `cd ml && .venv/bin/python audit_data.py` to regenerate [`ml/reports/DATA_AUDIT.md`](../ml/reports/DATA_AUDIT.md) from the local parquet tables. The report lists row/column counts, missingness, result status coverage, and duplicate-key checks.
+
+The processed table's required key is `(season, round, driver_id)`. Source `status` remains available alongside the derived `dnf` label in the training table so labels can be reviewed. `Finished`, `Lapped`, and `+N Lap` count as classified. Retirements/non-classifications after taking part are labeled `dnf=1`; `Did not start`, `Disqualified`, and `Withdrew` are excluded from the retirement target (`dnf` is missing) pending cause-specific semantics. Forecast snapshots omit final-result fields and are stored separately from this training table.
+
+The local race calendar contains circuit names, country, latitude, and longitude. OpenF1 meeting data adds a coarse sourced circuit type, but not corner geometry, corner-speed mix, elevation, or pit-lane time loss. The current OpenF1 pace table contains per-driver/session best-lap summaries but no source timestamp, sector splits, or speed-trap values. Archived weather is observed race weather; the current forecast parquet is not a historical forecast archive. OpenF1 race-control data provides race-level SC/VSC labels from 2023 onward. A chronological event-risk diagnostic underperformed the expanding-prevalence baseline and is not used in forecasts. These limits and results are recorded in the generated audit and experiment report.
+
+Sprint forecasts use distinct information cutoffs: `pre_quali`, `post_quali_pre_sprint`, and `post_sprint`. Sprint-result fields are eligible only for `post_sprint`. DNF risk is simulated separately from classified finishing position; expected finish and position distributions are conditional on classification. Candidate training and immutable forecast snapshots have dedicated storage paths. Current status, limitations, and tests for those feature views are documented in the model experiment records.

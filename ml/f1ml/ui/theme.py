@@ -114,12 +114,14 @@ def status_badge(mode: str) -> None:
   css = {
     "pre_quali": "status-pre",
     "post_quali": "status-post",
+    "post_sprint": "status-post",
     "grid_set": "status-grid",
     "complete": "status-done",
   }
   labels = {
     "pre_quali": "Pre-qualifying",
     "post_quali": "Post-qualifying",
+    "post_sprint": "Post-sprint",
     "grid_set": "Grid set",
     "complete": "Race complete",
   }
