@@ -3,6 +3,7 @@
 
     python race_weekend.py before --season 2026 --round 20   # before lights out
     python race_weekend.py after  --season 2026 --round 20   # once results are published
+    python race_weekend.py train  --season 2026 --round 20   # retrain/save models only, no new forecast
 
 `before` uses the same feature recipe (specs.py) every weekend and just adds the
 newest race to the training data. Changing the recipe itself is an experiment
@@ -107,6 +108,37 @@ def _print_card(scored: pd.DataFrame, title: str) -> None:
         )
 
 
+def train_and_save(season: int, round_num: int) -> tuple[dict, dict]:
+    """Train every mode on races before (season, round_num) and save them as the live models."""
+    history = _load_training_frame()
+    history = history[(history["season"] < season) | ((history["season"] == season) & (history["round"] < round_num))]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    bundles, manifest = {}, {"season": season, "round": round_num, "created_at_utc": stamp, "modes": {}}
+    for mode in MODE_RULES:
+        bundle, info = train_weekend_bundle(history, mode, season)
+        manifest["modes"][mode] = info
+        if bundle is not None:
+            bundles[mode] = bundle
+        print(f"[train] {mode}: {info.get('status')} races={info.get('races', '-')} T={info.get('temperature', '-')}")
+    archive = _archive_current_models(stamp)
+    for mode, bundle in bundles.items():
+        bundle.save(MODELS / mode)
+    manifest["previous_models_archived_to"] = str(archive) if archive else None
+    (MODELS / "weekend_manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
+    print(f"Models saved to {MODELS} (previous copy: {archive})")
+    return bundles, manifest
+
+
+def cmd_train(season: int, round_num: int, skip_ingest: bool) -> None:
+    if not skip_ingest:
+        from f1ml.ingest import run as ingest_run
+
+        ingest_run()
+    clear_prediction_caches()
+    build_driver_race()
+    train_and_save(season, round_num)
+
+
 def cmd_before(season: int, round_num: int, skip_ingest: bool) -> None:
     if not skip_ingest:
         from f1ml.ingest import run as ingest_run
@@ -120,23 +152,9 @@ def cmd_before(season: int, round_num: int, skip_ingest: bool) -> None:
     if race["won"].max() == 1:
         raise SystemExit(f"{season} R{round_num} already has a result; use `after` instead.")
 
-    history = _load_training_frame()
-    history = history[(history["season"] < season) | ((history["season"] == season) & (history["round"] < round_num))]
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-    bundles, manifest = {}, {"season": season, "round": round_num, "created_at_utc": stamp, "modes": {}}
-    for mode in MODE_RULES:
-        bundle, info = train_weekend_bundle(history, mode, season)
-        manifest["modes"][mode] = info
-        if bundle is not None:
-            bundles[mode] = bundle
-        print(f"[train] {mode}: {info.get('status')} races={info.get('races', '-')} T={info.get('temperature', '-')}")
-
-    archive = _archive_current_models(stamp)
-    for mode, bundle in bundles.items():
-        bundle.save(MODELS / mode)
-    manifest["previous_models_archived_to"] = str(archive) if archive else None
-    (MODELS / "weekend_manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
+    bundles, manifest = train_and_save(season, round_num)
+    stamp = manifest["created_at_utc"]
+    archive = manifest["previous_models_archived_to"]
 
     mode, stage = _stage_for(race)
     if mode not in bundles:
@@ -212,12 +230,12 @@ def cmd_after(season: int, round_num: int, skip_ingest: bool) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["before", "after"])
+    p.add_argument("command", choices=["before", "after", "train"])
     p.add_argument("--season", type=int, required=True)
     p.add_argument("--round", type=int, required=True)
     p.add_argument("--skip-ingest", action="store_true", help="Use already-downloaded data")
     a = p.parse_args()
-    (cmd_before if a.command == "before" else cmd_after)(a.season, a.round, a.skip_ingest)
+    {"before": cmd_before, "after": cmd_after, "train": cmd_train}[a.command](a.season, a.round, a.skip_ingest)
 
 
 if __name__ == "__main__":

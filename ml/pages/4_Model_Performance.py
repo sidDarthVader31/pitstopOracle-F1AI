@@ -35,9 +35,9 @@ c1.metric("Races in dataset", eda.get("n_races", "—"))
 c2.metric("Pole win rate", f"{eda.get('pole_win_rate', 0):.1%}")
 c3.metric(
     "Post-quali hit (WF 2026)",
-    f"{oos.get('oos_post_quali_hit', metrics.get('test_rf_hit', 0)):.1%}",
+    f"{oos.get('oos_post_hit', metrics.get('test_rf_hit', 0)):.1%}",
 )
-c4.metric("Post log-loss (WF 2026)", f"{oos.get('oos_post_quali_log_loss', 0):.3f}")
+c4.metric("Post log-loss (WF 2026)", f"{oos.get('oos_post_log_loss', 0):.3f}")
 
 tab_pre, tab_post, tab_wf = st.tabs(["Pre-quali", "Post-quali", "Walk-forward"])
 
@@ -49,20 +49,20 @@ with tab_pre:
     with col_a:
         st.markdown(
             f"""
-            | Method | Train | Walk-forward 2026 |
+            | Method | Train (in-sample) | Walk-forward 2026 |
             |---|---:|---:|
-            | Oracle | {train_pre.get('train_pre_quali_hit', 0):.1%} | {oos.get('oos_pre_quali_hit', 0):.1%} |
-            | Equal field | — | {train_pre.get('train_pre_quali_equal_hit', 0):.1%}* |
-            | Champ leader | — | {train_pre.get('train_pre_quali_champ_hit', 0):.1%}* |
+            | Model winner hit | {train_pre.get('train_pre_quali_hit', 0):.1%} | {oos.get('oos_pre_hit', 0):.1%} |
+            | Model top-3 | {train_pre.get('train_pre_quali_top3', 0):.1%} | {oos.get('oos_pre_top3', 0):.1%} |
+            | Prior-form baseline log-loss | — | {oos.get('oos_pre_prior_form_log_loss', 0):.3f} |
             """
         )
-        st.caption("*Baselines shown from train set; OOS baselines not in walk-forward aggregate.")
+        st.caption("Walk-forward: each 2026 race predicted using only earlier races. Train numbers are optimistic.")
     with col_b:
         st.markdown(
             f"""
             | Metric | Walk-forward 2026 |
             |---|---:|
-            | Log-loss | {oos.get('oos_pre_quali_log_loss', 0):.3f} |
+            | Log-loss | {oos.get('oos_pre_log_loss', 0):.3f} |
             | Races | {oos.get('oos_n_races', 0)} |
             """
         )
@@ -80,9 +80,9 @@ with tab_post:
             f"""
             | Method | Train | Walk-forward 2026 |
             |---|---:|---:|
-            | Oracle | {train_post.get('train_post_quali_hit', 0):.1%} | {oos.get('oos_post_quali_hit', 0):.1%} |
-            | Pole | {train_post.get('train_post_quali_pole_hit', 0):.1%} | — |
-            | Quali-gap | — | LL {oos.get('oos_post_quali_quali_gap_log_loss', 0):.3f} |
+            | Model | {train_post.get('train_post_quali_hit', 0):.1%} | {oos.get('oos_post_hit', 0):.1%} |
+            | Pole | {train_post.get('train_post_quali_pole_hit', 0):.1%} | {oos.get('oos_post_pole_hit', 0):.1%} |
+            | Quali-gap | — | LL {oos.get('oos_post_quali_gap_log_loss', 0):.3f} |
             """
         )
     with col_b:
@@ -91,8 +91,8 @@ with tab_post:
             f"""
             | Metric | Value |
             |---|---:|
-            | OOS log-loss | {oos.get('oos_post_quali_log_loss', 0):.3f} |
-            | OOS quali-gap LL | {oos.get('oos_post_quali_quali_gap_log_loss', 0):.3f} |
+            | OOS log-loss | {oos.get('oos_post_log_loss', 0):.3f} |
+            | OOS quali-gap LL | {oos.get('oos_post_quali_gap_log_loss', 0):.3f} |
             | Top-3 hit (train) | {train_post.get('train_post_quali_top3', 0):.1%} |
             | Model ≠ pole races | {disagree_n} |
             | Hit when ≠ pole | {train_post.get('train_post_quali_disagree_hit', 0):.1%} |
@@ -120,9 +120,9 @@ with tab_wf:
             hide_index=True,
         )
         st.markdown(
-            f"**Mean post-quali hit:** {oos.get('oos_post_quali_hit', 0):.1%} · "
-            f"**mean log-loss:** {oos.get('oos_post_quali_log_loss', 0):.3f} "
-            f"(quali-gap baseline: {oos.get('oos_post_quali_quali_gap_log_loss', 0):.3f})"
+            f"**Mean post-quali hit:** {oos.get('oos_post_hit', 0):.1%} · "
+            f"**mean log-loss:** {oos.get('oos_post_log_loss', 0):.3f} "
+            f"(quali-gap baseline: {oos.get('oos_post_quali_gap_log_loss', 0):.3f})"
         )
     else:
         st.info("Walk-forward 2026 results appear after training.")

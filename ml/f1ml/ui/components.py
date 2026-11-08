@@ -14,6 +14,7 @@ from f1ml.predict import (
     weekend_phase,
     weekend_phase_label,
 )
+from f1ml.paths import REPORTS
 from f1ml.starting_grid import grid_metadata, penalty_callouts
 from f1ml.ui.charts import fantasy_pts_bar, podium_strip, win_prob_bar
 from f1ml.ui.theme import hero_card, phase_chip, status_badge
@@ -135,46 +136,39 @@ def render_prediction_block(
 
 
 def render_accuracy_journal(n_races: int = 10) -> None:
-    journal = accuracy_journal(n_races)
-    if journal.empty:
-        st.info("Accuracy journal fills in as races complete.")
+    """Honest track record: walk-forward results (each race predicted from earlier races only)."""
+    from f1ml.predict import load_metrics
+
+    wf = [r for r in load_metrics().get("walk_forward", []) if "post_hit" in r][-n_races:]
+    if not wf:
+        st.info("Accuracy journal fills in after `python run_pipeline.py --skip-ingest` writes walk-forward results.")
         return
-    model_hits = journal["model_correct"].mean()
-    pole_hits = journal["pole_correct"].mean()
-    top3 = journal["model_top3"].mean()
+    frame = pd.DataFrame(wf)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Model winner hit rate", f"{model_hits:.0%}")
-    c2.metric("Pole baseline", f"{pole_hits:.0%}")
-    c3.metric("Model top-3", f"{top3:.0%}")
-    display = journal.copy()
-    display["model_correct"] = display["model_correct"].map({True: "✓", False: "✗"})
-    display["pole_correct"] = display["pole_correct"].map({True: "✓", False: "✗"})
-    view = display[
-        [
-            "season",
-            "round",
-            "race",
-            "actual",
-            "model_pick",
-            "pole_pick",
-            "model_correct",
-            "pole_correct",
-            "model_top3",
-            "model_win_prob",
-        ]
-    ].rename(
-        columns={
-            "race": "Grand Prix",
-            "actual": "Winner",
-            "model_pick": "Model pick",
-            "pole_pick": "Pole pick",
-            "model_correct": "Model hit",
-            "pole_correct": "Pole hit",
-            "model_top3": "Top-3",
-            "model_win_prob": "Win %",
-        }
+    c1.metric("Model winner hit rate", f"{frame['post_hit'].mean():.0%}")
+    c2.metric("Pole baseline", f"{frame['post_pole_hit'].mean():.0%}")
+    c3.metric("Model top-3", f"{frame['post_top3'].mean():.0%}")
+    st.caption(
+        f"Last {len(frame)} races, post-qualifying. Each race was predicted using only races before it "
+        "(walk-forward), so these are honest out-of-sample numbers. Log-loss: lower is better."
     )
+    view = pd.DataFrame(
+        {
+            "Season": frame["test_season"],
+            "Round": frame["test_round"],
+            "Date": frame.get("test_date"),
+            "Model hit": frame["post_hit"].map({1.0: "✓", 0.0: "✗"}),
+            "Pole hit": frame["post_pole_hit"].map({1.0: "✓", 0.0: "✗"}),
+            "Winner in model top-3": frame["post_top3"].map({1.0: "✓", 0.0: "✗"}),
+            "Model log-loss": frame["post_log_loss"].round(3),
+            "Grid baseline log-loss": frame["post_grid_log_loss"].round(3),
+        }
+    ).iloc[::-1]
     st.dataframe(view, use_container_width=True, hide_index=True)
+    live = REPORTS / "live_tracking.csv"
+    if live.exists():
+        st.markdown("**Live forecasts** (saved before each race by `race_weekend.py before`, scored by `after`)")
+        st.dataframe(pd.read_csv(live), use_container_width=True, hide_index=True)
 
 
 def render_result_banner(scored: pd.DataFrame, race_df: pd.DataFrame) -> None:

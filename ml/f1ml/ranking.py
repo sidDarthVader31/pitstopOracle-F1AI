@@ -352,6 +352,25 @@ def race_level_win_probs(
     return out
 
 
+FIT_ONLY_RNG_ATTRS = ("_feature_subsample_rng",)
+
+
+def strip_fit_only_state(model: Any) -> Any:
+    """Drop numpy Generator objects that scikit-learn keeps only for fitting.
+
+    A pickled numpy 2.x Generator cannot be unpickled under numpy 1.x ("PCG64 is
+    not a known BitGenerator module"), which breaks the dashboard when Streamlit
+    runs in a different Python environment. Prediction never uses them, and
+    refitting recreates them.
+    """
+    steps = model.named_steps.values() if hasattr(model, "named_steps") else [model]
+    for step in steps:
+        for attr in FIT_ONLY_RNG_ATTRS:
+            if hasattr(step, attr):
+                setattr(step, attr, None)
+    return model
+
+
 class WeekendRanker:
     """Production ranker bundle: pace scorer + DNF hazard + calibration."""
 
@@ -421,8 +440,8 @@ class WeekendRanker:
 
     def save(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self.ranker, directory / "ranker.joblib")
-        joblib.dump(self.dnf_model, directory / "dnf_model.joblib")
+        joblib.dump(strip_fit_only_state(self.ranker), directory / "ranker.joblib")
+        joblib.dump(strip_fit_only_state(self.dnf_model), directory / "dnf_model.joblib")
         joblib.dump(
             {
                 "mode": self.mode,

@@ -22,7 +22,7 @@ pip install -r requirements.txt
 | `python run_pipeline.py --refresh` | Alias for `--all-data` |
 | `python run_pipeline.py --skip-ingest` | Retrain from cached raw data |
 | `python -c "from f1ml.starting_grid import sync_starting_grid; sync_starting_grid(2026, 14)"` | Refresh starting grid for one GP |
-| `streamlit run app.py` | Launch dashboard |
+| `python -m streamlit run app.py` | Launch dashboard with the venv's Python (avoids version clashes with a global/Anaconda streamlit) |
 | `python predict_race.py` | CLI weekend card for the next GP on the calendar |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
 

@@ -55,7 +55,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 python run_pipeline.py      # ingest + train (first run ~10 min)
-streamlit run app.py        # open dashboard
+python -m streamlit run app.py   # open dashboard (uses the venv's Python)
 ```
 
 Predict one race from the CLI:

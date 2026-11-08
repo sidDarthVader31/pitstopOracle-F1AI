@@ -11,7 +11,7 @@ Run the app:
 ```bash
 cd ml
 source .venv/bin/activate
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 ### This Weekend
