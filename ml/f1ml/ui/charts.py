@@ -58,21 +58,21 @@ def _eval_split(metrics: dict, mode: str) -> dict:
   if mode == "pre_quali":
     if oos.get("oos_n_races", 0) or test.get(f"test_{mode}_hit"):
       return {
-        f"test_{mode}_hit": oos.get("oos_pre_quali_hit", test.get(f"test_{mode}_hit", 0)),
+        f"test_{mode}_hit": oos.get("oos_pre_hit", test.get(f"test_{mode}_hit", 0)),
         f"test_{mode}_log_loss": oos.get(
-          "oos_pre_quali_log_loss", test.get(f"test_{mode}_log_loss", 0)
+          "oos_pre_log_loss", test.get(f"test_{mode}_log_loss", 0)
         ),
         **{k: v for k, v in test.items() if k not in (f"test_{mode}_hit", f"test_{mode}_log_loss")},
       }
   else:
-    if oos.get("oos_post_quali_n_races", 0) or test.get(f"test_{mode}_hit"):
+    if oos.get("oos_post_n_races", 0) or test.get(f"test_{mode}_hit"):
       return {
-        f"test_{mode}_hit": oos.get("oos_post_quali_hit", test.get(f"test_{mode}_hit", 0)),
+        f"test_{mode}_hit": oos.get("oos_post_hit", test.get(f"test_{mode}_hit", 0)),
         f"test_{mode}_log_loss": oos.get(
-          "oos_post_quali_log_loss", test.get(f"test_{mode}_log_loss", 0)
+          "oos_post_log_loss", test.get(f"test_{mode}_log_loss", 0)
         ),
         f"test_{mode}_quali_gap_log_loss": oos.get(
-          "oos_post_quali_quali_gap_log_loss",
+          "oos_post_quali_gap_log_loss",
           test.get(f"test_{mode}_quali_gap_log_loss", 0),
         ),
         **{

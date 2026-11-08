@@ -204,3 +204,30 @@ def test_post_sprint_falls_back_to_post_quali_bundle(tmp_path, monkeypatch):
     assert predict.load_weekend_models("post_sprint") == "bundle"
     assert calls == [tmp_path / "post_quali"]
     predict.load_weekend_models.cache_clear()
+
+
+def test_wet_what_if_flattens_win_probabilities():
+    from f1ml import predict
+
+    race, mode = predict.resolve_race_features(*predict.next_upcoming_race())
+    base = predict.weekend_card(race, race_mode=mode)
+    wet = predict.weekend_card(predict.apply_what_if(race, is_wet=True), race_mode=mode)
+    assert abs(wet["win_prob"].sum() - 1.0) < 1e-6
+    # Rain scenario: favourite less certain, outsiders more likely.
+    assert wet["win_prob"].max() < base["win_prob"].max()
+
+
+def test_grid_penalty_what_if_never_helps():
+    from f1ml import predict
+
+    race, mode = predict.resolve_race_features(*predict.next_upcoming_race())
+    if race["quali_position"].isna().all():
+        import pytest
+
+        pytest.skip("needs qualifying results")
+    base = predict.weekend_card(race, race_mode=mode).set_index("driver_id")
+    pole = race.sort_values("quali_position").iloc[0]["driver_id"]
+    moved = predict.weekend_card(
+        predict.apply_what_if(race, grid_overrides={pole: 20}), race_mode=mode
+    ).set_index("driver_id")
+    assert moved.loc[pole, "win_prob"] < base.loc[pole, "win_prob"]

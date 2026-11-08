@@ -64,6 +64,18 @@ Log-loss measures how much probability the model gave the actual winner (lower i
 
 Over the full window the adopted model beats the grid baseline and the previous model on log-loss, both before and after qualifying.
 
+### Grid-penalty follow-up
+
+The Fantasy Lab what-if showed that moving the pole-sitter to P20 *raised* his win probability. The cause is `grid_vs_quali` (places lost to a penalty): in real data, big drops mostly hit fast cars taking engine penalties, so the model learned "big drop → strong car".
+
+| 2025–26 post-quali | Log-loss | Hit | 2026 log-loss |
+|---|---:|---:|---:|
+| Adopted (unconstrained `grid_vs_quali`) | **1.322** | **41.9%** | **1.527** |
+| `grid_vs_quali` constrained "never helps" | 1.388 | 39.5% | 1.621 |
+| `grid_vs_quali` removed | 1.378 | 41.9% | 1.621 |
+
+We keep the adopted recipe. The what-if now moves only the starting slot (`grid`, which is constrained so a worse slot never helps) and leaves `grid_vs_quali` unchanged.
+
 ## Decision
 
 Adopt the "track + race pace" recipe as the weekend recipe and keep collecting live results. Revisit after 5 or more live races with `reports/live_tracking.csv`. Next experiments, one at a time:

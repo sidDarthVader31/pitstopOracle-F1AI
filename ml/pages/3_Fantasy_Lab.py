@@ -90,6 +90,11 @@ with whatif_tab:
   col1, col2 = st.columns(2)
   with col1:
     is_wet = st.toggle("Wet race forecast", value=False)
+    if is_wet:
+      st.caption(
+        "Assumption, not learned: the model has no wet-race data, so rain is simulated as "
+        "a more random race (gaps between drivers shrink), giving outsiders better odds."
+      )
   with col2:
     use_penalty = st.toggle("Apply extra grid penalty", value=False)
 

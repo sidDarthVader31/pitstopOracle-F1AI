@@ -147,6 +147,8 @@ def feature_columns(mode: WeekendMode) -> tuple[list[str], list[str]]:
             numeric = numeric + FEATURE_TRACK_POST
     if mode == "post_sprint":
         numeric = numeric + FEATURE_POST_SPRINT_EXTRA
+    dropped = {c for c in os.environ.get("F1ML_DROP_FEATURES", "").split(",") if c}
+    numeric = [c for c in numeric if c not in dropped]
     return numeric, list(FEATURE_CAT)
 
 

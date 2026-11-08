@@ -543,6 +543,12 @@ def build_upcoming_race_features(season: int, round_num: int) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+# The model has no wet-race training signal, so the wet what-if is an explicit,
+# hand-set assumption: rain makes results more random. Scores are divided by an
+# extra factor (higher = flatter probabilities, more upsets). Not learned from data.
+WET_SCENARIO_TEMPERATURE_FACTOR = 1.6
+
+
 def apply_what_if(
     race_df: pd.DataFrame,
     *,
@@ -552,19 +558,23 @@ def apply_what_if(
     out = race_df.copy()
     if is_wet is not None:
         out["is_wet"] = int(is_wet)
+        out["scenario_wet"] = int(is_wet)
         out["precipitation_mm"] = out["precipitation_mm"].fillna(5.0).clip(lower=1.0) if is_wet else 0.0
     if grid_overrides:
         for driver_id, grid_pos in grid_overrides.items():
             mask = out["driver_id"] == driver_id
             if not mask.any():
                 continue
+            # Only the starting slot moves. grid_vs_quali is left as-is on purpose:
+            # in real data large grid drops mostly hit fast cars (engine penalties),
+            # so changing it would make a penalty look *helpful* (EXP-003 notes).
+            # The pace model's grid input is constrained so a worse slot never helps.
             out.loc[mask, "grid"] = float(grid_pos)
-            quali = out.loc[mask, "quali_position"].iloc[0]
-            if pd.notna(quali):
-                out.loc[mask, "grid_vs_quali"] = float(grid_pos) - float(quali)
-            else:
+            if pd.isna(out.loc[mask, "quali_position"].iloc[0]):
                 out.loc[mask, "quali_position"] = float(grid_pos)
-                out.loc[mask, "grid_vs_quali"] = 0.0
+        from f1ml.features import add_track_interactions
+
+        out = add_track_interactions(out)
     return out
 
 
@@ -580,6 +590,11 @@ def weekend_card(
     mode_ui = race_mode or race_status(race_df)
     wmode = inference_mode(mode_ui)
     bundle = load_weekend_models(wmode)
+    if "scenario_wet" in race_df and race_df["scenario_wet"].eq(1).any():
+        import copy
+
+        bundle = copy.copy(bundle)
+        bundle.temperature = bundle.temperature * WET_SCENARIO_TEMPERATURE_FACTOR
 
     scored = bundle.predict_frame(race_df)
     out = scored.copy()
@@ -752,10 +767,13 @@ def driver_insight_bullets(row: pd.Series) -> list[str]:
     bullets: list[str] = []
     car = row.get("car_pace_ewma")
     if pd.notna(car):
-        bullets.append(f"Car pace rating: {car:+.2f}s vs pole")
+        bullets.append(f"Car qualifying pace: {car:.2f}% off pole (recent races)")
     drv = row.get("driver_skill_ewma")
+    race_pace = row.get("car_race_pace_ewma")
+    if pd.notna(race_pace) and float(race_pace) < -0.5:
+        bullets.append(f"Strong race pace: {abs(float(race_pace)):.2f}% faster than field median")
     if pd.notna(drv) and abs(float(drv)) > 0.05:
-        bullets.append(f"Driver skill vs teammate: {drv:+.2f}s")
+        bullets.append(f"Qualifying vs teammate: {drv:.2f}% behind on average")
     if pd.notna(row.get("grid")) and pd.notna(row.get("quali_position")):
         g, q = int(row["grid"]), int(row["quali_position"])
         if g != q:
@@ -767,9 +785,10 @@ def driver_insight_bullets(row: pd.Series) -> list[str]:
     avg5 = row.get("driver_id_avg_finish_last_5")
     if pd.notna(avg5):
         bullets.append(f"Avg finish last 5: {avg5:.1f}")
-    overtake = row.get("circuit_grid_to_finish_delta")
-    if pd.notna(overtake) and float(overtake) > 0.5:
-        bullets.append(f"Circuit overtaking index +{overtake:.1f}")
+    importance = row.get("circuit_grid_importance")
+    if pd.notna(importance):
+        level = "high" if importance >= 0.68 else "low" if importance <= 0.56 else "medium"
+        bullets.append(f"Grid importance at this track: {level} ({importance:.2f})")
     if row.get("is_wet") == 1:
         bullets.append("Wet race forecast")
     champ = row.get("champ_position_before")
