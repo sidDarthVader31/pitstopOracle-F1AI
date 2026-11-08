@@ -16,47 +16,47 @@ No production model artifacts are written by this evaluation run.
 
 - Races scored: 19
 - Date range: 2026-03-08 to 2026-11-01
-- Pre-quali hit / top-3 / log-loss / Brier: **21.1% / 78.9% / 3.699 / 0.041**
-- Prior-form baseline log-loss: **3.125**
-- Post-quali hit / top-3 / log-loss / Brier: **42.1% / 68.4% / 1.548 / 0.033**
-- Post-quali rank correlation / finish MAE: **0.750 / 2.989**
+- Pre-quali hit / top-3 / log-loss / Brier: **21.1% / 42.1% / 2.186 / 0.041**
+- Prior-form baseline log-loss: **2.275**
+- Post-quali hit / top-3 / log-loss / Brier: **36.8% / 78.9% / 1.527 / 0.036**
+- Post-quali rank correlation / finish MAE: **0.702 / 3.099**
 - Grid / quali-gap log-loss: **1.609 / 1.559**
-- DNF log-loss / Brier / PR-AUC / ROC-AUC: **0.585 / 0.172 / 0.246 / 0.464**
-- Post-sprint races / win hit / top-3 / log-loss / Brier: **6 / 16.7% / 83.3% / 1.888 / 0.046**
+- DNF log-loss / Brier / PR-AUC / ROC-AUC: **0.503 / 0.158 / 0.300 / 0.508**
+- Post-sprint races / win hit / top-3 / log-loss / Brier: **6 / 16.7% / 83.3% / 1.470 / 0.037**
 
-- 2026 R01: post hit 0.0%, post LL 2.417, pole LL 0.000, quali-gap LL 0.886
-- 2026 R02: post hit 100.0%, post LL 0.717, pole LL 0.000, quali-gap LL 1.242
-- 2026 R03: post hit 100.0%, post LL 0.587, pole LL 0.000, quali-gap LL 1.222
-- 2026 R04: post hit 0.0%, post LL 1.370, pole LL 0.000, quali-gap LL 1.431
-- 2026 R05: post hit 100.0%, post LL 0.324, pole LL 34.539, quali-gap LL 1.882
-- 2026 R06: post hit 100.0%, post LL 0.670, pole LL 0.000, quali-gap LL 1.585
-- 2026 R07: post hit 0.0%, post LL 1.424, pole LL 34.539, quali-gap LL 1.734
-- 2026 R08: post hit 0.0%, post LL 2.053, pole LL 0.000, quali-gap LL 1.652
-- 2026 R09: post hit 0.0%, post LL 2.185, pole LL 34.539, quali-gap LL 1.688
-- 2026 R10: post hit 0.0%, post LL 1.312, pole LL 0.000, quali-gap LL 1.310
-- 2026 R11: post hit 0.0%, post LL 1.870, pole LL 0.000, quali-gap LL 1.577
-- 2026 R12: post hit 0.0%, post LL 2.223, pole LL 0.000, quali-gap LL 1.716
-- 2026 R13: post hit 0.0%, post LL 3.352, pole LL 34.539, quali-gap LL 2.546
-- 2026 R14: post hit 100.0%, post LL 0.832, pole LL 34.539, quali-gap LL 1.771
-- 2026 R15: post hit 100.0%, post LL 0.636, pole LL 0.000, quali-gap LL 0.616
-- 2026 R16: post hit 0.0%, post LL 1.081, pole LL 0.000, quali-gap LL 1.278
-- 2026 R17: post hit 100.0%, post LL 0.939, pole LL 0.000, quali-gap LL 1.662
-- 2026 R18: post hit 100.0%, post LL 0.128, pole LL 0.000, quali-gap LL 1.575
-- 2026 R19: post hit 0.0%, post LL 5.298, pole LL 34.539, quali-gap LL 2.257
+- 2026 R01: post hit 100.0%, post LL 1.295, pole LL 0.000, quali-gap LL 0.886
+- 2026 R02: post hit 0.0%, post LL 1.955, pole LL 0.000, quali-gap LL 1.242
+- 2026 R03: post hit 0.0%, post LL 1.166, pole LL 0.000, quali-gap LL 1.222
+- 2026 R04: post hit 100.0%, post LL 0.517, pole LL 0.000, quali-gap LL 1.431
+- 2026 R05: post hit 0.0%, post LL 1.034, pole LL 34.539, quali-gap LL 1.882
+- 2026 R06: post hit 100.0%, post LL 0.511, pole LL 0.000, quali-gap LL 1.585
+- 2026 R07: post hit 100.0%, post LL 0.494, pole LL 34.539, quali-gap LL 1.734
+- 2026 R08: post hit 0.0%, post LL 2.816, pole LL 0.000, quali-gap LL 1.652
+- 2026 R09: post hit 0.0%, post LL 3.466, pole LL 34.539, quali-gap LL 1.688
+- 2026 R10: post hit 0.0%, post LL 1.898, pole LL 0.000, quali-gap LL 1.310
+- 2026 R11: post hit 0.0%, post LL 1.971, pole LL 0.000, quali-gap LL 1.577
+- 2026 R12: post hit 0.0%, post LL 1.613, pole LL 0.000, quali-gap LL 1.716
+- 2026 R13: post hit 0.0%, post LL 2.412, pole LL 34.539, quali-gap LL 2.546
+- 2026 R14: post hit 0.0%, post LL 1.399, pole LL 34.539, quali-gap LL 1.771
+- 2026 R15: post hit 100.0%, post LL 0.574, pole LL 0.000, quali-gap LL 0.616
+- 2026 R16: post hit 100.0%, post LL 0.555, pole LL 0.000, quali-gap LL 1.278
+- 2026 R17: post hit 100.0%, post LL 1.038, pole LL 0.000, quali-gap LL 1.662
+- 2026 R18: post hit 0.0%, post LL 1.268, pole LL 0.000, quali-gap LL 1.575
+- 2026 R19: post hit 0.0%, post LL 3.037, pole LL 34.539, quali-gap LL 2.257
 
 ## Transfer diagnostic (train <2026, test 2026 only)
 
 - Train races: 92
 - Test races (2026): 19
-- Post-quali hit: **52.6%**
-- Post-quali log-loss: **1.443**
+- Post-quali hit: **36.8%**
+- Post-quali log-loss: **1.445**
 - Quali-gap log-loss: **1.559**
 
 ## When model pick ≠ pole (train set)
 
-- Races: 41
-- Model hit: **53.7%**
-- Log-loss: **1.211**
+- Races: 40
+- Model hit: **45.0%**
+- Log-loss: **1.154**
 
 
 ## All-season chronological out-of-sample window
@@ -64,18 +64,18 @@ No production model artifacts are written by this evaluation run.
 - Test races: 91 (2022-11-13 to 2026-11-01)
 - Every eligible race is held out once; each fit and calibration set contains earlier races only.
 - Seasons: 2022, 2023, 2024, 2025, 2026
-- Pre-quali races / hit / log-loss / prior-form log-loss: 91 / 24.2% / 2.743 / 3.152
-- Pre-quali top-3 / Brier / rank correlation / finish MAE: 65.9% / 0.042 / 0.638 / 3.489
-- Post-quali races / hit / log-loss / grid log-loss / quali-gap log-loss: 91 / 58.2% / 1.729 / 1.466 / 1.954
-- Post-quali top-3 / Brier / rank correlation / finish MAE: 79.1% / 0.030 / 0.720 / 3.028
-- DNF log-loss / Brier / PR-AUC / ROC-AUC: 0.465 / 0.132 / 0.249 / 0.495
-- Post-sprint races / win hit / top-3 / log-loss / Brier: 12 / 8.3% / 91.7% / 1.836 / 0.049
+- Pre-quali races / hit / log-loss / prior-form log-loss: 91 / 36.3% / 1.795 / 2.386
+- Pre-quali top-3 / Brier / rank correlation / finish MAE: 69.2% / 0.037 / 0.615 / 3.498
+- Post-quali races / hit / log-loss / grid log-loss / quali-gap log-loss: 91 / 47.3% / 1.362 / 1.466 / 1.911
+- Post-quali top-3 / Brier / rank correlation / finish MAE: 83.5% / 0.032 / 0.678 / 3.097
+- DNF log-loss / Brier / PR-AUC / ROC-AUC: 0.391 / 0.115 / 0.280 / 0.552
+- Post-sprint races / win hit / top-3 / log-loss / Brier: 12 / 25.0% / 91.7% / 1.492 / 0.038
 
-- 2022: 2 races; pre LL 2.465; post LL 0.761; DNF PR-AUC 0.218
-- 2023: 22 races; pre LL 1.931; post LL 2.590; DNF PR-AUC 0.306
-- 2024: 24 races; pre LL 3.923; post LL 1.889; DNF PR-AUC 0.230
-- 2025: 24 races; pre LL 1.572; post LL 1.003; DNF PR-AUC 0.218
-- 2026: 19 races; pre LL 3.699; post LL 1.548; DNF PR-AUC 0.246
+- 2022: 2 races; pre LL 2.003; post LL 1.373; DNF PR-AUC 0.157
+- 2023: 22 races; pre LL 1.214; post LL 1.114; DNF PR-AUC 0.261
+- 2024: 24 races; pre LL 2.001; post LL 1.659; DNF PR-AUC 0.316
+- 2025: 24 races; pre LL 1.794; post LL 1.159; DNF PR-AUC 0.257
+- 2026: 19 races; pre LL 2.186; post LL 1.527; DNF PR-AUC 0.300
 
 Training-set diagnostics are stored separately under `train_*` keys in `metrics.json`; they are not performance claims.
 Win probability temperature is calibrated from preceding races in each fold; DNF probabilities are reported separately from conditional classified finishing distributions.

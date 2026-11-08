@@ -1,0 +1,28 @@
+circuit_id,speed_class,street,notes
+albert_park,medium,1,Park/street hybrid; medium-speed flowing corners
+americas,medium,0,Mixed: fast esses sector 1 + slow stadium section
+bahrain,medium,0,Traction/braking heavy; several overtaking zones
+baku,medium,1,Very long straight + slow 90-degree street corners
+catalunya,medium,0,Medium/high-speed corners; overtaking hard
+hungaroring,low,0,Tight and twisty; overtaking hard
+imola,medium,0,Narrow old-school layout; overtaking hard
+interlagos,medium,0,Short lap; good overtaking into Turn 1; weather-prone
+jeddah,high,1,Fastest street circuit; flat-out sweeps
+losail,high,0,Flowing high-speed corners
+madring,medium,1,Madrid street/hybrid circuit (new 2026)
+marina_bay,low,1,Slow street corners; overtaking hard; SC-prone
+miami,medium,1,Street-style around stadium; long straights
+monaco,low,1,Slowest track; overtaking nearly impossible
+monza,high,0,Temple of speed; low downforce; slipstream
+red_bull_ring,high,0,Short lap; power and braking
+ricard,medium,0,Medium-speed; wide run-offs
+rodriguez,low,0,Altitude; long straight but slow stadium infield; track position matters
+sepang,high,0,High-speed corners; wide track
+shanghai,medium,0,Long back straight; mixed corners
+silverstone,high,0,High-speed corners (Maggotts/Becketts/Copse)
+spa,high,0,High-speed corners + long full-throttle sections
+suzuka,high,0,High-speed esses; overtaking hard
+vegas,high,1,Long straights; low downforce street circuit
+villeneuve,low,1,Stop-start chicanes; semi-street; heavy braking
+yas_marina,medium,0,Mixed; final race of season
+zandvoort,medium,0,Narrow banked corners; overtaking very hard

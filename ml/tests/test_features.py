@@ -99,3 +99,47 @@ def test_circuit_overtaking_summary_is_shifted_by_event_not_driver_row():
             assert vals.isna().all()
     # Race 4 receives the average of the three prior race-level means (0, 0, 0).
     assert out.loc[out["round"] == 4, "circuit_grid_to_finish_delta"].eq(0).all()
+
+
+def test_grid_importance_uses_only_earlier_races():
+    from f1ml.features import add_grid_importance
+
+    rows = []
+    # Circuit "lock": finishes exactly in grid order. Circuit "open": reversed.
+    for i, (circuit, reverse) in enumerate([("lock", False), ("open", True), ("lock", False), ("open", True)]):
+        for g in range(1, 7):
+            rows.append(
+                {
+                    "season": 2024,
+                    "round": i + 1,
+                    "circuit_id": circuit,
+                    "date": f"2024-0{i + 1}-01",
+                    "grid": float(g),
+                    "position": float(7 - g if reverse else g),
+                }
+            )
+    out = add_grid_importance(pd.DataFrame(rows))
+    by_race = out.drop_duplicates("round").set_index("round")["circuit_grid_importance"]
+    # Race 1 has no history: neutral prior. Its own result must not leak in.
+    assert abs(by_race[1] - 0.6) < 1e-9
+    # By round 3, the grid-order circuit scores higher than the reversed one does at round 4.
+    assert by_race[3] > by_race[4]
+
+
+def test_car_class_rating_falls_back_then_tracks_class():
+    from f1ml.ratings import MIN_CLASS_RACES, build_ratings
+
+    rows = []
+    classes = ["high", "low", "high", "low", "high", "low", "high"]
+    for rnd, cls in enumerate(classes, 1):
+        # Team "fast_high" is on pole at high-speed tracks and 2% off at low-speed ones.
+        rows.append({"season": 2026, "round": rnd, "driver_id": "a", "constructor_id": "fast_high",
+                     "best_quali_seconds": 90.0 if cls == "high" else 91.8, "position": 1, "dnf": 0, "speed_class": cls})
+        rows.append({"season": 2026, "round": rnd, "driver_id": "b", "constructor_id": "other",
+                     "best_quali_seconds": 90.9, "position": 2, "dnf": 0, "speed_class": cls})
+    rated = build_ratings(pd.DataFrame(rows))
+    team = rated[rated["constructor_id"] == "fast_high"].set_index("round")
+    assert team.loc[1, "car_class_delta"] == 0.0  # no class history yet
+    last_high = team.loc[7]
+    assert MIN_CLASS_RACES <= 3
+    assert last_high["car_class_delta"] < 0  # better than its overall rating at high-speed tracks

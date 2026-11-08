@@ -190,3 +190,17 @@ def test_clear_prediction_caches_invalidates_driver_race(tmp_path: Path):
         second = predict.load_driver_race()
     assert first["won"].iloc[0] == 0
     assert second["won"].iloc[0] == 1
+
+
+def test_post_sprint_falls_back_to_post_quali_bundle(tmp_path, monkeypatch):
+    from f1ml import predict
+
+    calls = []
+    (tmp_path / "post_quali").mkdir()
+    (tmp_path / "post_quali" / "meta.joblib").write_bytes(b"")
+    monkeypatch.setattr(predict, "MODELS", tmp_path)
+    monkeypatch.setattr(predict.WeekendRanker, "load", classmethod(lambda cls, path: calls.append(path) or "bundle"))
+    predict.load_weekend_models.cache_clear()
+    assert predict.load_weekend_models("post_sprint") == "bundle"
+    assert calls == [tmp_path / "post_quali"]
+    predict.load_weekend_models.cache_clear()

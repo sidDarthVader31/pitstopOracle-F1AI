@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,7 +9,7 @@ CANONICAL = DATA / "canonical"
 MANUAL = DATA / "manual"
 PROCESSED = DATA / "processed"
 MODELS = ROOT / "models"
-REPORTS = ROOT / "reports"
+REPORTS = Path(os.environ.get("F1ML_REPORTS_DIR", ROOT / "reports"))
 
 START_YEAR = 2022
 END_YEAR = 2026

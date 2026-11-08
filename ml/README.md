@@ -26,6 +26,30 @@ pip install -r requirements.txt
 | `python predict_race.py` | CLI weekend card for the next GP on the calendar |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
 
+## Race-weekend loop (retrain every race)
+
+```bash
+python race_weekend.py before --season 2026 --round 20   # after qualifying, before the race
+python race_weekend.py after  --season 2026 --round 20   # once results are published
+```
+
+`before` downloads the latest data, retrains on every completed race, picks how
+confident to be from the 10 most recent races, saves the models (previous copy goes to
+`models/archive/`), prints the forecast and saves it under `reports/forecasts/`.
+`after` scores that saved forecast against the real result and appends it to
+`reports/live_tracking.csv`, so you can see over time whether the model is improving.
+
+Retraining the same recipe each weekend is automatic. Changing the recipe (inputs in
+`f1ml/specs.py`) needs a walk-forward experiment first — see `docs/experiments/`.
+
+### Track and car profile (EXP-003)
+
+- `data/manual/circuit_profile.csv` — each circuit's speed class (high/medium/low) and street flag. Edit it to add new tracks.
+- `circuit_grid_importance` — measured from past races: how closely the finishing order followed the grid (Monaco ≈ high, Interlagos ≈ low).
+- `car_quali_class_ewma` / `car_class_delta` — each team's qualifying pace at this *type* of track this season, versus its overall pace.
+- DNF risk — each team's retirement rate in the current regulation era, shrunk toward the field average.
+- Toggle the track features off for comparison: `F1ML_TRACK_FEATURES=0 python run_pipeline.py --skip-ingest`.
+
 ## Models (v3)
 
 Two weekend modes, trained separately with a **pairwise ranker + Plackett-Luce** distribution:

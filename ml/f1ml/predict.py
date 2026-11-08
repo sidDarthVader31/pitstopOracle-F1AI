@@ -32,7 +32,11 @@ def load_driver_race() -> pd.DataFrame:
 
 @lru_cache(maxsize=2)
 def load_weekend_models(mode: WeekendMode) -> WeekendRanker:
-    return WeekendRanker.load(MODELS / mode)
+    path = MODELS / mode
+    if not (path / "meta.joblib").exists() and mode == "post_sprint":
+        # No sprint-specific model yet: the post-qualifying model is the closest cutoff.
+        path = MODELS / "post_quali"
+    return WeekendRanker.load(path)
 
 
 @lru_cache(maxsize=1)
@@ -211,6 +215,9 @@ def resolve_race_features(season: int, round_num: int) -> tuple[pd.DataFrame, Ra
         race_df = get_race_features(season, round_num)
         if race_df["won"].max() == 1:
             return race_df, "complete"
+        if "is_upcoming" in race_df and race_df["is_upcoming"].eq(1).all():
+            # Built by features.build_driver_race with the same code as training rows.
+            return race_df, race_status(race_df, season, round_num)
     except ValueError:
         pass
     race_df = build_upcoming_race_features(season, round_num)
