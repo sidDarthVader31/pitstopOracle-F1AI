@@ -167,6 +167,10 @@ def train_dnf_model(
     eval_year: int = 2026,
 ) -> tuple[EmpiricalDNFModel, list[str]]:
     """Fit the empirical team DNF-rate model (see EmpiricalDNFModel)."""
+    import os
+
+    if os.environ.get("F1ML_DNF") == "hgb":
+        return train_dnf_classifier(train, mode, eval_year)
     dnf_train = train[train["dnf"].notna()]
     if dnf_train["dnf"].astype(int).nunique() < 2:
         raise ValueError("DNF training requires both positive and negative labels")

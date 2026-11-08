@@ -143,6 +143,7 @@ def build_ratings(df: pd.DataFrame) -> pd.DataFrame:
     car_rating = pd.Series(NEW_ENTRANT_CAR_PRIOR, index=out.index, dtype=float)
     car_class_rating = pd.Series(np.nan, index=out.index, dtype=float)
     car_race_rating = pd.Series(0.0, index=out.index, dtype=float)
+    car_legacy_rating = pd.Series(0.0, index=out.index, dtype=float)
     driver_rating = pd.Series(NEW_ENTRANT_DRIVER_PRIOR, index=out.index, dtype=float)
     driver_race_rating = pd.Series(0.0, index=out.index, dtype=float)
     dnf_hazard_car = pd.Series(0.15, index=out.index, dtype=float)
@@ -156,6 +157,7 @@ def build_ratings(df: pd.DataFrame) -> pd.DataFrame:
         class_state: dict[str, float] = {}
         class_n: dict[str, int] = {}
         race_state = 0.0
+        legacy_state = 0.0
         dnf_car_state = 0.15
         prev_era = None
         for (_, _), event in cgrp.groupby(["season", "round"], sort=True):
@@ -164,10 +166,12 @@ def build_ratings(df: pd.DataFrame) -> pd.DataFrame:
                 car_state = NEW_ENTRANT_CAR_PRIOR
                 class_state, class_n = {}, {}
                 race_state = 0.0
+                legacy_state = 0.0
                 dnf_car_state = 0.15
             track_class = str(row["speed_class"]) if has_class else "all"
             car_rating.loc[event.index] = car_state
             car_race_rating.loc[event.index] = race_state
+            car_legacy_rating.loc[event.index] = legacy_state
             if class_n.get(track_class, 0) >= MIN_CLASS_RACES:
                 car_class_rating.loc[event.index] = class_state[track_class]
             else:
@@ -182,6 +186,15 @@ def build_ratings(df: pd.DataFrame) -> pd.DataFrame:
                 prev_class = class_state.get(track_class, car_state)
                 class_state[track_class] = CAR_EWMA_ALPHA * obs + (1 - CAR_EWMA_ALPHA) * prev_class
                 class_n[track_class] = class_n.get(track_class, 0) + 1
+            # Pre-EXP-003 blend (seconds: quali gap + FP long run + race pace), kept for comparison.
+            legacy_parts = [
+                float(v)
+                for col in ("quali_gap_s", "fp_longrun_delta", "race_pace_delta")
+                if col in event
+                for v in event[col].dropna().tolist()
+            ]
+            if legacy_parts:
+                legacy_state = CAR_EWMA_ALPHA * float(np.mean(legacy_parts)) + (1 - CAR_EWMA_ALPHA) * legacy_state
             race_pace = event["race_pace_pct"].dropna() if "race_pace_pct" in event else pd.Series(dtype=float)
             if not race_pace.empty:
                 # Best race lap vs field median (%), from earlier races only (OpenF1, 2023+).
@@ -215,6 +228,7 @@ def build_ratings(df: pd.DataFrame) -> pd.DataFrame:
     out["car_pace_ewma"] = car_rating
     out["driver_skill_ewma"] = driver_rating
     out["car_race_pace_ewma"] = car_race_rating
+    out["car_pace_legacy_ewma"] = car_legacy_rating
     out["car_quali_class_ewma"] = car_class_rating
     out["car_class_delta"] = out["car_quali_class_ewma"] - out["car_pace_ewma"]
     out["driver_race_vs_teammate_ewma"] = driver_race_rating

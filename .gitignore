@@ -52,3 +52,4 @@ ml/.venv/
 ml/data/cache/
 ml/data/snapshots/
 ml/models/candidates/
+ml/models/archive/

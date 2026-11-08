@@ -83,6 +83,7 @@ MONOTONIC_DIRECTION = {
     "driver_skill_ewma": -1,
     "car_driver_combo": -1,
     "car_race_pace_ewma": -1,
+    "car_pace_legacy_ewma": -1,
     "champ_position_before": -1,
     "champ_points_before": 1,
     "champ_wins_before": 1,
@@ -135,6 +136,8 @@ def season_range_label(seasons: set[int]) -> str:
 def feature_columns(mode: WeekendMode) -> tuple[list[str], list[str]]:
     """Return (numeric, categorical) column lists for a weekend mode."""
     numeric = list(FEATURE_PRE_QUALI_NUM)
+    if os.environ.get("F1ML_CAR_PACE") == "legacy":
+        numeric = ["car_pace_legacy_ewma" if c == "car_pace_ewma" else c for c in numeric]
     track = track_features_enabled()
     if track:
         numeric = numeric + FEATURE_TRACK_PRE
@@ -154,4 +157,5 @@ def all_numeric_columns() -> list[str]:
         + FEATURE_POST_QUALI_EXTRA
         + FEATURE_TRACK_POST
         + FEATURE_POST_SPRINT_EXTRA
+        + ["car_pace_legacy_ewma"]
     )
