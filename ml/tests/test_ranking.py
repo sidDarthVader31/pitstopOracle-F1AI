@@ -9,7 +9,13 @@ import pandas as pd
 import pytest
 
 from f1ml.eval import quali_gap_probabilities, race_probs_from_binary, race_softmax
-from f1ml.ranking import market_probs_from_scores, predict_dnf_probs, predict_scores, train_dnf_model
+from f1ml.ranking import (
+    market_probs_from_scores,
+    predict_dnf_probs,
+    predict_scores,
+    train_dnf_classifier,
+    train_dnf_model,
+)
 from f1ml.ratings import ERA_RESET_YEAR, build_ratings
 
 
@@ -108,9 +114,28 @@ def test_dnf_training_receives_both_labels_even_when_position_missing(monkeypatc
             "round": [1, 1, 2, 2],
         }
     )
-    train_dnf_model(frame, "pre_quali")
+    train_dnf_classifier(frame, "pre_quali")
     assert seen["labels"] == {0, 1}
     assert seen["rows"] == 4
+
+
+def test_empirical_dnf_model_uses_retirements_and_shrinks_to_field():
+    frame = pd.DataFrame(
+        {
+            "season": [2026] * 12,
+            "round": [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6],
+            "constructor_id": ["a", "b"] * 6,
+            "position": [1.0, np.nan] * 6,
+            "dnf": [0, 1] * 6,
+        }
+    )
+    model, features = train_dnf_model(frame, "pre_quali")
+    assert features == ["constructor_id"]
+    probs = model.predict(pd.DataFrame({"constructor_id": ["a", "b", "new_team"]}))
+    # Team b retired every race, team a never; both shrink toward the 50% field rate.
+    assert probs[0] < probs[2] < probs[1]
+    assert abs(probs[2] - 0.5) < 1e-9
+    assert 0.0 < probs[0] and probs[1] < 1.0
 
 
 def test_stale_saved_model_features_are_imputed_not_read_from_current_event():
@@ -163,8 +188,11 @@ def test_era_reset_constructor_prior():
     )
     rated = build_ratings(df)
     r2026 = rated[rated["season"] == ERA_RESET_YEAR].iloc[0]
-    # Entering 2026 round 1, car rating should be reset prior (0), not 2025 pace.
-    assert abs(r2026["car_pace_ewma"]) < 0.01
+    # Entering 2026 round 1, car rating should be the reset prior, not 2025 pace.
+    from f1ml.ratings import NEW_ENTRANT_CAR_PRIOR
+
+    assert abs(r2026["car_pace_ewma"] - NEW_ENTRANT_CAR_PRIOR) < 0.01
+    assert abs(r2026["car_quali_class_ewma"] - NEW_ENTRANT_CAR_PRIOR) < 0.01
 
 
 def test_quali_gap_baseline_not_pole_only():

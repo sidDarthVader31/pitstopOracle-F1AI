@@ -15,11 +15,52 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from f1ml.eval import race_softmax
-from f1ml.specs import FEATURE_PRE_QUALI_NUM, WeekendMode, feature_columns
+from f1ml.specs import (
+    ERA_RESET_YEAR,
+    MONOTONIC_DIRECTION,
+    WeekendMode,
+    all_numeric_columns,
+    feature_columns,
+)
 
 
-def build_rank_regressor() -> HistGradientBoostingRegressor:
+class EmpiricalDNFModel:
+    """DNF risk = team's retirement rate in the current regulation era, shrunk to the field rate.
+
+    The earlier gradient-boosted DNF classifier scored ROC-AUC ~0.5 out of sample
+    (no better than guessing), so a transparent rate is used instead.
+    """
+
+    def __init__(self, prior_strength: float = 20.0):
+        self.prior_strength = prior_strength
+        self.field_rate = 0.12
+        self.team_rate: dict[str, float] = {}
+
+    def fit(self, df: pd.DataFrame) -> "EmpiricalDNFModel":
+        d = df[df["dnf"].notna()]
+        if d.empty:
+            return self
+        era = (d["season"] >= ERA_RESET_YEAR).astype(int)
+        latest = int(era.max())
+        era_rows = d[era == latest]
+        enough = era_rows.groupby(["season", "round"]).ngroups >= 5
+        base = era_rows if enough else d
+        self.field_rate = float(base["dnf"].mean())
+        team = era_rows.groupby("constructor_id")["dnf"].agg(["sum", "count"])
+        k = self.prior_strength
+        self.team_rate = (
+            (team["sum"] + k * self.field_rate) / (team["count"] + k)
+        ).astype(float).to_dict()
+        return self
+
+    def predict(self, df: pd.DataFrame) -> np.ndarray:
+        teams = df.get("constructor_id", pd.Series(index=df.index, dtype=object))
+        return teams.map(self.team_rate).fillna(self.field_rate).to_numpy(dtype=float)
+
+
+def build_rank_regressor(monotonic_cst: list[int] | None = None) -> HistGradientBoostingRegressor:
     return HistGradientBoostingRegressor(
+        monotonic_cst=monotonic_cst,
         max_iter=250,
         max_depth=4,
         learning_rate=0.06,
@@ -55,7 +96,11 @@ def make_rank_pipeline(numeric: list[str]) -> Pipeline:
             )
         ]
     )
-    return Pipeline([("pre", pre), ("reg", build_rank_regressor())])
+    import os
+
+    use_mono = os.environ.get("F1ML_MONOTONIC", "1") != "0"
+    directions = [MONOTONIC_DIRECTION.get(c, 0) if use_mono else 0 for c in numeric]
+    return Pipeline([("pre", pre), ("reg", build_rank_regressor(directions))])
 
 
 def make_dnf_pipeline(numeric: list[str]) -> Pipeline:
@@ -120,7 +165,20 @@ def train_dnf_model(
     train: pd.DataFrame,
     mode: WeekendMode,
     eval_year: int = 2026,
-) -> Pipeline:
+) -> tuple[EmpiricalDNFModel, list[str]]:
+    """Fit the empirical team DNF-rate model (see EmpiricalDNFModel)."""
+    dnf_train = train[train["dnf"].notna()]
+    if dnf_train["dnf"].astype(int).nunique() < 2:
+        raise ValueError("DNF training requires both positive and negative labels")
+    return EmpiricalDNFModel().fit(dnf_train), ["constructor_id"]
+
+
+def train_dnf_classifier(
+    train: pd.DataFrame,
+    mode: WeekendMode,
+    eval_year: int = 2026,
+) -> tuple[Pipeline, list[str]]:
+    """Legacy gradient-boosted DNF classifier (kept for comparison)."""
     dnf_train = train[train["dnf"].notna()].copy()
     labels = dnf_train["dnf"].astype(int)
     if labels.nunique() < 2:
@@ -179,9 +237,14 @@ def predict_scores(ranker: Pipeline, df: pd.DataFrame, mode: WeekendMode) -> np.
 def predict_dnf_probs(
     dnf_model: Pipeline, df: pd.DataFrame, dnf_features: list[str]
 ) -> np.ndarray:
+    if isinstance(dnf_model, EmpiricalDNFModel):
+        return dnf_model.predict(df)
+    # Legacy classifiers may declare inputs outside the cutoff-safe allowlist
+    # (e.g. observed race-day weather); impute those rather than read them.
+    safe = set(all_numeric_columns())
     X = df.copy()
     for c in dnf_features:
-        if c not in FEATURE_PRE_QUALI_NUM or c not in X.columns:
+        if c not in safe or c not in X.columns:
             X[c] = np.nan
     return dnf_model.predict_proba(X[dnf_features])[:, 1]
 
@@ -226,6 +289,13 @@ def market_probs_from_scores(
     if n and all_retired.any():
         retired[all_retired, int(np.argmin(risk))] = False
 
+    # Exact Plackett-Luce win probability given each retirement draw: softmax over
+    # classified drivers. Averaging these is smooth and never exactly zero.
+    logits = np.where(retired, -np.inf, adj[None, :])
+    logits = logits - logits.max(axis=1, keepdims=True)
+    weights = np.exp(logits)
+    win_prob = (weights / weights.sum(axis=1, keepdims=True)).mean(axis=0)
+
     perturbed = adj[None, :] + rng.gumbel(size=(n_samples, n))
     perturbed[retired] = -np.inf
     order = np.argsort(-perturbed, axis=1)
@@ -243,10 +313,12 @@ def market_probs_from_scores(
             where=classified_n > 0,
         )
     finish_sum = np.where(classified, ranks, 0).sum(axis=0)
+    podium_prob = np.maximum(((ranks >= 1) & (ranks <= 3)).mean(axis=0), win_prob)
+    points_prob = np.maximum(((ranks >= 1) & (ranks <= 10)).mean(axis=0), podium_prob)
     return {
-        "win_prob": (ranks == 1).mean(axis=0),
-        "podium_prob": ((ranks >= 1) & (ranks <= 3)).mean(axis=0),
-        "points_prob": ((ranks >= 1) & (ranks <= 10)).mean(axis=0),
+        "win_prob": win_prob,
+        "podium_prob": podium_prob,
+        "points_prob": points_prob,
         "expected_finish": np.divide(
             finish_sum,
             classified_n,

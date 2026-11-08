@@ -66,3 +66,16 @@ def test_race_simulator_reports_dnf_and_classified_position_distribution():
     assert result["win_prob"].sum() == pytest.approx(1.0)
     assert result["podium_prob"][2] < 0.03
     assert result["expected_finish"][2] >= 1.0
+
+
+def test_win_probs_sum_to_one_and_never_exactly_zero():
+    import numpy as np
+
+    from f1ml.ranking import market_probs_from_scores
+
+    scores = -np.arange(1, 21, dtype=float) * 2.0  # very confident ordering
+    out = market_probs_from_scores(scores, np.full(20, 0.1), temperature=0.3, n_samples=500)
+    assert abs(out["win_prob"].sum() - 1.0) < 1e-6
+    assert (out["win_prob"] > 0).all()
+    assert (out["podium_prob"] >= out["win_prob"] - 1e-12).all()
+    assert (out["points_prob"] >= out["podium_prob"] - 1e-12).all()

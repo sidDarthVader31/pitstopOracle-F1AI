@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import matplotlib
 
@@ -51,6 +52,13 @@ def _race_keys(df: pd.DataFrame) -> list[tuple[int, int]]:
     return sorted(df.groupby(["season", "round"]).groups.keys())
 
 
+def _in_keys(df: pd.DataFrame, keys) -> pd.Series:
+    """Boolean mask: row's (season, round) is in keys (vectorised)."""
+    codes = df["season"].astype(int) * 100 + df["round"].astype(int)
+    wanted = {int(s) * 100 + int(r) for s, r in keys}
+    return codes.isin(wanted)
+
+
 def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[dict]:
     """Expanding-window folds for all seasons or one requested season."""
     all_keys = _race_keys(df)
@@ -60,8 +68,7 @@ def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[
         prior = [k for k in all_keys if k < test_key]
         if not prior:
             continue
-        train_keys = set(prior)
-        train_mask = df.apply(lambda r: (r["season"], r["round"]) in train_keys, axis=1)
+        train_mask = _in_keys(df, prior)
         test_mask = (df["season"] == test_key[0]) & (df["round"] == test_key[1])
         folds.append(
             {
@@ -168,7 +175,7 @@ def _fit_plackett_luce_temperature(
     samples: int = 100,
 ) -> float:
     """Calibrate the same DNF-adjusted Plackett-Luce win distribution used at inference."""
-    grid = np.linspace(0.2, 1.6, 8)
+    grid = np.geomspace(0.3, 10.0, 16)
     score_series = pd.Series(scores, index=df.index)
     dnf_series = pd.Series(dnf_probs, index=df.index)
     best_t, best_ll = 1.0, float("inf")
@@ -262,7 +269,7 @@ def _transfer_eval_2026(df: pd.DataFrame) -> dict:
     train_post = train[train["quali_position"].notna()]
     keys = _race_keys(train)
     val_keys = set(keys[-10:]) if len(keys) >= 10 else set()
-    val_mask = train.apply(lambda r: (r["season"], r["round"]) in val_keys, axis=1)
+    val_mask = _in_keys(train, val_keys)
     val_df = train[val_mask]
     tr_fit = train[~val_mask]
     if tr_fit.empty:
@@ -435,7 +442,10 @@ def train_and_eval() -> dict:
 
     # Walk-forward: each race is tested only against earlier races.
     wf_results = []
+    first_test_season = int(os.environ.get("F1ML_EVAL_FROM_SEASON", "0"))
     for fold in _walk_forward_folds(df):
+        if fold["test_season"] < first_test_season:
+            continue
         tr = fold["train"]
         te = fold["test"]
         if te.empty or len(tr) < 20:
@@ -448,13 +458,16 @@ def train_and_eval() -> dict:
         fit_keys = set(prior_keys[:-10])
         if len(fit_keys) < 10:
             continue
-        val_mask = tr.apply(lambda r: (r["season"], r["round"]) in val_keys, axis=1)
+        val_mask = _in_keys(tr, val_keys)
         val_df = tr[val_mask]
-        tr_fit = tr[tr.apply(lambda r: (r["season"], r["round"]) in fit_keys, axis=1)]
+        tr_fit = tr[_in_keys(tr, fit_keys)]
         if tr_fit.empty:
             continue
 
-        pre_f = _train_mode_bundle(tr_fit, "pre_quali", val=val_df if len(val_df) else None)
+        fold_year = int(fold["test_season"]) if os.environ.get("F1ML_FOLD_WEIGHTS", "1") != "0" else EVAL_YEAR
+        pre_f = _train_mode_bundle(
+            tr_fit, "pre_quali", val=val_df if len(val_df) else None, eval_year=fold_year
+        )
         pre_scored = _score_bundle(te, pre_f)
         dnf_probs = predict_dnf_probs(pre_f.dnf_model, te, pre_f.dnf_features)
         dnf_y = te["dnf"].astype(int).to_numpy()
@@ -487,6 +500,7 @@ def train_and_eval() -> dict:
                 tr_post_fit,
                 "post_quali",
                 val=val_post if len(val_post) else None,
+                eval_year=fold_year,
             )
             post_scored = _score_bundle(te_post, post_f)
             pole_p = pole_probabilities(te_post)
@@ -514,12 +528,14 @@ def train_and_eval() -> dict:
             val_sprint_keys = set(sprint_keys[-5:])
             fit_sprint_keys = set(sprint_keys[:-5])
             val_sprint = tr_sprint[
-                tr_sprint.apply(lambda r: (r["season"], r["round"]) in val_sprint_keys, axis=1)
+                _in_keys(tr_sprint, val_sprint_keys)
             ]
             fit_sprint = tr_sprint[
-                tr_sprint.apply(lambda r: (r["season"], r["round"]) in fit_sprint_keys, axis=1)
+                _in_keys(tr_sprint, fit_sprint_keys)
             ]
-            sprint_f = _train_mode_bundle(fit_sprint, "post_sprint", val=val_sprint)
+            sprint_f = _train_mode_bundle(
+                fit_sprint, "post_sprint", val=val_sprint, eval_year=fold_year
+            )
             sprint_scored = _score_bundle(te_sprint, sprint_f)
             wf_row["sprint_hit"] = winner_hit_rate(te_sprint, sprint_scored["win_prob"])
             wf_row["sprint_top3"] = topk_hit_rate(te_sprint, sprint_scored["win_prob"], k=3)
@@ -582,7 +598,7 @@ def recalibrate_temperatures() -> dict:
         if len(keys) < 12:
             continue
         val_keys = set(keys[-12:])
-        val_df = sub[sub.apply(lambda r: (r["season"], r["round"]) in val_keys, axis=1)]
+        val_df = sub[_in_keys(sub, val_keys)]
         scores = predict_scores(bundle.ranker, val_df, mode)
         dnf_probs = predict_dnf_probs(bundle.dnf_model, val_df, bundle.dnf_features)
         bundle.temperature = _fit_plackett_luce_temperature(val_df, scores, dnf_probs)
