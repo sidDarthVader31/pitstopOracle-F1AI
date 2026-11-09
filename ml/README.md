@@ -25,6 +25,7 @@ pip install -r requirements.txt
 | `python -m streamlit run app.py` | Launch dashboard with the venv's Python (avoids version clashes with a global/Anaconda streamlit) |
 | `python predict_race.py` | CLI weekend card for the next GP on the calendar |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
+| `python scripts/market_benchmark.py all` | Model vs betting market (Polymarket) on the same races; writes `reports/MARKET_BENCHMARK.md` (EXP-004). `report` re-scores from cache |
 
 ## Race-weekend loop (retrain every race)
 

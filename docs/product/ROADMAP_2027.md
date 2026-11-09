@@ -27,7 +27,7 @@ We have never compared the model with the betting market.
 | ID | Workstream | Wave | Session | Output |
 |---|---|---|---|---|
 | A | Market research (UK/EU bettors, fantasy, competitors, regulation, pricing) | 1 (now) | _tbd_ | `docs/product/MARKET_RESEARCH.md` |
-| B | Model-vs-market benchmark + integrity re-audit | 1 (now) | _tbd_ | `docs/experiments/EXP-004-market-benchmark.md`, `docs/ML_LAUNCH_READINESS.md` |
+| B | Model-vs-market benchmark + integrity re-audit | 1 (now) | done 2026-11-09 | `docs/experiments/EXP-004-market-benchmark.md`, `docs/ML_LAUNCH_READINESS.md` |
 | — | Live shadow test: save forecasts before each remaining 2026 race | 1 | coordinator | `ml/` forecast snapshots |
 | C | Product design: personas, MVP spec, Streamlit wireframes | 2 (Dec) | _tbd_ | `docs/product/MVP_SPEC.md` |
 | D | ML improvement experiments, one change each | 2 (Dec–Jan) | _tbd_ | `docs/experiments/EXP-00x-*.md` |
@@ -50,3 +50,4 @@ We have never compared the model with the betting market.
 
 ## Decision log
 - **2026-11-09.** Chose UK/EU bettors as the first market. Streamlit stays the UI until launch, and the real web app comes after launch. Workstreams run as separate Claude sessions coordinated from the main session. Note: this branch is based on `starting-grid` (commit 75ffc3f, official starting grid), which is not merged into `main` yet.
+- **2026-11-09. G1 market verdict (workstream B): the model loses to the market. Position as a fantasy/race-insight tool, not "value bets".** On the same 50 races (2024 Italian GP to 2026 Mexico City GP), Polymarket's de-margined winner probabilities scored log-loss **1.172 after qualifying vs 1.485 for the model** (grid 1.563). Model minus market: +0.31, 95% CI +0.11 to +0.51. The model is better in only 16 of 50 races. Before the weekend: market 1.735 vs model 1.989 (CI +0.02 to +0.51). A 50/50 model+market blend doesn't beat the market. Backing drivers whenever the model's probability is above the market's returned about −51% ROI after qualifying. Main weakness: the model's 50%+ favourites win only 39% of the time. No usable odds exist for 2022–23 without a Betfair account or a paid feed (not signed up for: owner decision). Integrity re-audit: one evaluation leak fixed (disqualified and non-starting drivers were dropped from scored fields). The re-run walk-forward post-quali log-loss is now 1.443 vs grid 1.488, and 1.637 vs 1.617 in 2026. The DNF model (ROC-AUC 0.55) supports no launch claims. Details: `docs/experiments/EXP-004-market-benchmark.md`, `docs/ML_LAUNCH_READINESS.md`. Owner still to confirm the positioning decision at G1.
