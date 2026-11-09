@@ -208,3 +208,41 @@ def test_quali_gap_baseline_not_pole_only():
     probs = quali_gap_probabilities(df)
     assert probs.loc[0] > probs.loc[1] > probs.loc[2]
     assert abs(probs.sum() - 1.0) < 1e-9
+
+
+def test_current_race_outcomes_cannot_move_pre_race_ratings():
+    """Regression guard (ML_LAUNCH_READINESS #1): perturbing a race's own race pace,
+    qualifying, result and DNF must leave the ratings that enter that race unchanged."""
+    base = pd.DataFrame(
+        {
+            "season": [2025] * 6,
+            "round": [1, 1, 2, 2, 3, 3],
+            "driver_id": ["a", "b"] * 3,
+            "constructor_id": ["c1", "c2"] * 3,
+            "best_quali_seconds": [90.0, 91.0, 89.5, 92.0, 88.0, 93.0],
+            "position": [1.0, 5.0, 1.0, 8.0, 1.0, 12.0],
+            "dnf": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            "race_pace_delta": [0.0, 0.3, -0.1, 0.6, -0.3, 0.9],
+            "race_pace_pct": [0.0, 0.4, -0.1, 0.7, -0.3, 1.0],
+        }
+    )
+    changed = base.copy()
+    last = changed["round"] == 3
+    changed.loc[last, "race_pace_delta"] = [5.0, -5.0]
+    changed.loc[last, "race_pace_pct"] = [3.0, -3.0]
+    changed.loc[last, "best_quali_seconds"] = [99.0, 80.0]
+    changed.loc[last, "position"] = [20.0, 1.0]
+    changed.loc[last, "dnf"] = [1.0, 0.0]
+
+    cols = [
+        "car_pace_ewma", "car_race_pace_ewma", "driver_skill_ewma",
+        "driver_race_vs_teammate_ewma", "dnf_hazard_car", "dnf_hazard_driver",
+    ]
+    a = build_ratings(base).sort_values(["round", "driver_id"])
+    b = build_ratings(changed).sort_values(["round", "driver_id"])
+    pd.testing.assert_frame_equal(
+        a.loc[a["round"] == 3, cols].reset_index(drop=True),
+        b.loc[b["round"] == 3, cols].reset_index(drop=True),
+    )
+    # ...while the earlier races' observations do feed round 3.
+    assert (a.loc[a["round"] == 3, "car_race_pace_ewma"] != 0).any()

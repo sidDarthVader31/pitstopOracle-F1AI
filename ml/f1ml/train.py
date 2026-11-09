@@ -48,6 +48,20 @@ def _load_training_frame() -> pd.DataFrame:
     return df
 
 
+def _load_eval_field() -> pd.DataFrame:
+    """Every entrant of every completed race, as the field looked before lights out.
+
+    Training drops rows with no DNF label (did not start, disqualified, withdrew), but
+    a forecast cannot know about those in advance: a driver disqualified after the race
+    was a real contender at the cutoff. Scoring only the remaining drivers hands their
+    probability to the rest of the field using hindsight, so test races use this frame.
+    """
+    df = pd.read_parquet(PROCESSED / "driver_race.parquet")
+    has_winner = df.groupby(["season", "round"])["won"].transform("max") == 1
+    upcoming = df["is_upcoming"].fillna(0).astype(int) == 1 if "is_upcoming" in df else False
+    return df[has_winner & ~upcoming].copy()
+
+
 def _race_keys(df: pd.DataFrame) -> list[tuple[int, int]]:
     return sorted(df.groupby(["season", "round"]).groups.keys())
 
@@ -59,8 +73,15 @@ def _in_keys(df: pd.DataFrame, keys) -> pd.Series:
     return codes.isin(wanted)
 
 
-def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[dict]:
-    """Expanding-window folds for all seasons or one requested season."""
+def _walk_forward_folds(
+    df: pd.DataFrame, eval_year: int | None = None, test_field: pd.DataFrame | None = None
+) -> list[dict]:
+    """Expanding-window folds for all seasons or one requested season.
+
+    ``test_field`` (optional) supplies the test race's rows, e.g. the full entry list
+    from ``_load_eval_field``; training rows always come from ``df``.
+    """
+    source = df if test_field is None else test_field
     all_keys = _race_keys(df)
     keys = [key for key in all_keys if eval_year is None or key[0] == eval_year]
     folds = []
@@ -69,11 +90,11 @@ def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[
         if not prior:
             continue
         train_mask = _in_keys(df, prior)
-        test_mask = (df["season"] == test_key[0]) & (df["round"] == test_key[1])
+        test_mask = (source["season"] == test_key[0]) & (source["round"] == test_key[1])
         folds.append(
             {
                 "train": df[train_mask].copy(),
-                "test": df[test_mask].copy(),
+                "test": source[test_mask].copy(),
                 "test_season": int(test_key[0]),
                 "test_round": int(test_key[1]),
                 "eval_year": test_key[0],
@@ -404,10 +425,44 @@ def _write_eval_md(metrics: dict) -> None:
     (REPORTS / "EVAL.md").write_text("\n".join(lines))
 
 
-def train_and_eval() -> dict:
-    df = _load_training_frame()
-    eda = _eda(df)
+def _prediction_rows(scored: pd.DataFrame, stage: str) -> list[dict]:
+    """Per-driver out-of-sample probabilities for external comparisons (e.g. the market)."""
+    cols = ["season", "round", "driver_id", "family_name", "grid", "won", "podium", "win_prob", "podium_prob"]
+    out = scored[[c for c in cols if c in scored.columns]].copy()
+    out["stage"] = stage
+    return out.to_dict("records")
 
+
+def train_and_eval(*, write_reports: bool = True, predictions_out: list | None = None) -> dict:
+    """Walk-forward evaluation.
+
+    ``write_reports=False`` skips the in-sample diagnostics, the transfer test and
+    all report files, so callers (e.g. ``scripts/market_benchmark.py``) can reuse the
+    exact walk-forward folds. ``predictions_out`` collects each test race's
+    per-driver probabilities (``stage`` = pre_quali / post_quali / post_sprint).
+    """
+    df = _load_training_frame()
+    metrics: dict = {
+        "model_artifacts_written": False,
+        "training_date_range": [str(df["date"].min()), str(df["date"].max())],
+    }
+    if write_reports:
+        metrics.update(_in_sample_diagnostics(df))
+    _walk_forward_eval(df, metrics, predictions_out, test_field=_load_eval_field())
+    if not write_reports:
+        return metrics
+    metrics["transfer_2026"] = _transfer_eval_2026(df)
+    _add_compat_aliases(metrics)
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
+    _write_eval_md(metrics)
+    return metrics
+
+
+def _in_sample_diagnostics(df: pd.DataFrame) -> dict:
+    """Training-set fit diagnostics (not performance claims)."""
+    eda = _eda(df)
     # Train an in-memory diagnostic bundle only. Champion artifacts are not
     # overwritten by an evaluation run; promotion is a separate review step.
     train_post = df[df["quali_position"].notna()].copy()
@@ -419,8 +474,7 @@ def train_and_eval() -> dict:
         "train_races": int(df.groupby(["season", "round"]).ngroups),
         "pre_quali_temperature": pre_bundle.temperature,
         "post_quali_temperature": post_bundle.temperature,
-        "model_artifacts_written": False,
-        "training_date_range": [str(df["date"].min()), str(df["date"].max())],
+        "walk_forward_mc_samples": pre_bundle.mc_samples,
     }
 
     # In-sample diagnostics (not the shipping metric).
@@ -439,11 +493,19 @@ def train_and_eval() -> dict:
         sprint_b = _eval_baselines(train_sprint, "train_post_sprint", include_pole=True)
         metrics["train_post_sprint"] = {**sprint_m, **sprint_b}
         metrics["post_sprint_temperature"] = sprint_bundle.temperature
+    return metrics
 
+
+def _walk_forward_eval(
+    df: pd.DataFrame,
+    metrics: dict,
+    predictions_out: list | None = None,
+    test_field: pd.DataFrame | None = None,
+) -> None:
     # Walk-forward: each race is tested only against earlier races.
     wf_results = []
     first_test_season = int(os.environ.get("F1ML_EVAL_FROM_SEASON", "0"))
-    for fold in _walk_forward_folds(df):
+    for fold in _walk_forward_folds(df, test_field=test_field):
         if fold["test_season"] < first_test_season:
             continue
         tr = fold["train"]
@@ -469,9 +531,12 @@ def train_and_eval() -> dict:
             tr_fit, "pre_quali", val=val_df if len(val_df) else None, eval_year=fold_year
         )
         pre_scored = _score_bundle(te, pre_f)
-        dnf_probs = predict_dnf_probs(pre_f.dnf_model, te, pre_f.dnf_features)
-        dnf_y = te["dnf"].astype(int).to_numpy()
+        dnf_rows = te[te["dnf"].notna()]  # DNS / DSQ / withdrawn have no DNF label
+        dnf_probs = predict_dnf_probs(pre_f.dnf_model, dnf_rows, pre_f.dnf_features)
+        dnf_y = dnf_rows["dnf"].astype(int).to_numpy()
         pre_prob = pre_scored["win_prob"]
+        if predictions_out is not None:
+            predictions_out.extend(_prediction_rows(pre_scored, "pre_quali"))
         prior_p = prior_form_probabilities(te)
         test_date = str(pd.to_datetime(te["date"]).min().date()) if "date" in te else None
         wf_row = {
@@ -503,6 +568,8 @@ def train_and_eval() -> dict:
                 eval_year=fold_year,
             )
             post_scored = _score_bundle(te_post, post_f)
+            if predictions_out is not None:
+                predictions_out.extend(_prediction_rows(post_scored, "post_quali"))
             pole_p = pole_probabilities(te_post)
             qg_p = quali_gap_probabilities(te_post)
             grid_p = grid_probabilities(te_post)
@@ -537,6 +604,8 @@ def train_and_eval() -> dict:
                 fit_sprint, "post_sprint", val=val_sprint, eval_year=fold_year
             )
             sprint_scored = _score_bundle(te_sprint, sprint_f)
+            if predictions_out is not None:
+                predictions_out.extend(_prediction_rows(sprint_scored, "post_sprint"))
             wf_row["sprint_hit"] = winner_hit_rate(te_sprint, sprint_scored["win_prob"])
             wf_row["sprint_top3"] = topk_hit_rate(te_sprint, sprint_scored["win_prob"], k=3)
             wf_row["sprint_log_loss"] = race_log_loss(te_sprint, sprint_scored["win_prob"])
@@ -547,7 +616,10 @@ def train_and_eval() -> dict:
     metrics["walk_forward_2026"] = [r for r in wf_results if r["test_season"] == EVAL_YEAR]
     metrics["oos"] = _oos_summary(wf_results)
     metrics["oos_all"] = _oos_summary(wf_results, eval_year=None)
-    metrics["transfer_2026"] = _transfer_eval_2026(df)
+
+
+def _add_compat_aliases(metrics: dict) -> None:
+    wf_results = metrics["walk_forward"]
     oos = metrics["oos"]
     metrics["test_pre_quali"] = {
         "test_pre_quali_hit": oos.get("oos_pre_hit", 0),
@@ -571,12 +643,6 @@ def train_and_eval() -> dict:
     metrics["train_rf_hit"] = metrics["train_post_quali"].get("train_post_quali_hit", 0)
     metrics["train_rf_top3"] = metrics["train_post_quali"].get("train_post_quali_top3", 0)
     metrics["walk_forward_protocol"] = "One race per test fold; train/calibration data end before test race; production Monte Carlo Plackett-Luce scorer."
-    metrics["walk_forward_mc_samples"] = pre_bundle.mc_samples
-
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
-    _write_eval_md(metrics)
-    return metrics
 
 
 def recalibrate_temperatures() -> dict:
