@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -153,10 +154,20 @@ def train_pairwise_ranker(
     rank_train = train[pd.to_numeric(train["position"], errors="coerce").notna()].copy()
     if rank_train.empty:
         raise ValueError("ranker training requires at least one numeric finishing position")
+    w = race_sample_weights(rank_train, eval_year)
+    # Retirees are listed at the back of the results. Learning "pace" from those
+    # positions double-counts unreliability, which the DNF model already simulates
+    # (EXP-006). F1ML_PACE_TRAIN: "all" (default), "classified" drops retirements,
+    # "dnf_weight:<w>" keeps them with a reduced sample weight.
+    pace_train = os.environ.get("F1ML_PACE_TRAIN", "all")
+    retired = pd.to_numeric(rank_train.get("dnf"), errors="coerce").fillna(0).to_numpy() == 1
+    if pace_train == "classified" and (~retired).any():
+        rank_train, w = rank_train[~retired], w[~retired]
+    elif pace_train.startswith("dnf_weight:"):
+        w = np.where(retired, w * float(pace_train.split(":", 1)[1]), w)
     pipe = make_rank_pipeline(numeric)
     X = _feature_matrix(rank_train, mode)
     y = -rank_train["position"].astype(float)
-    w = race_sample_weights(rank_train, eval_year)
     pipe.fit(X, y, reg__sample_weight=w)
     return pipe
 

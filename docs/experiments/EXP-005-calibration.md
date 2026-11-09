@@ -1,6 +1,6 @@
 # EXP-005: Calibrate the favourites
 
-**Status:** done. **Decision: keep** the "rolling temperature + grid blend" calibration as the recommended recipe. It is **not wired into the live weekend models**: changing the approved model is the owner's call (see Decision).
+**Status:** done. **Decision: keep** a calibration fitted on all earlier walk-forward races. The grid blend wins on today's pace model; on the EXP-006 pace model the plain rolling temperature wins (see "Update after EXP-006"). It is **not wired into the live weekend models**: changing the approved model is the owner's call (see Decision).
 **Evaluation:** the same 91 walk-forward races as `ml/reports/EVAL.md` (2022 R21 to 2026 R19). 2025–26 (43 races) and 2026 (19 races) are shown separately. The internal market comparison uses the 50 races in EXP-004.
 **Branch:** `claude/ml-fixes-6f0fa2`. No model artifact was written or promoted.
 
@@ -96,6 +96,10 @@ Before qualifying the gain is smaller: 2025–26 improves, and 2026 is slightly 
 ## Decision
 
 **Keep** `rolling_T_grid_blend` as the recommended calibration (post-quali and pre-quali). **Owner decision needed** to adopt it in the live weekend run, which means changing the approved model. Suggested order: (1) owner approves; (2) workstream D or E wires `f1ml.calibration` into `race_weekend.train_weekend_bundle` and the walk-forward, so `EVAL.md` reports the same path; (3) re-run `EVAL.md` and this experiment.
+
+## Update after EXP-006 (same day)
+
+EXP-006 found that much of the favourite over-confidence came from the pace model double-counting retirements, not from calibration. Re-running these variants on the EXP-006 pace model (`python scripts/exp_calibration.py pace_classified`), the plain **rolling temperature** is best on log-loss in every window: all 91 1.276, 2025–26 1.184, 2026 1.210, with a 2025–26 top bucket of 59% said / 59% won. The grid blend is second (1.302 / 1.187 / 1.310), but has the best Brier and the only CI against the grid that excludes zero. **Updated recommendation: EXP-006 pace model + rolling temperature**, with the grid blend as the conservative fallback. See EXP-006, "Combined with EXP-005 calibration".
 
 ## Reproduce
 
