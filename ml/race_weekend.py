@@ -46,10 +46,19 @@ MODE_RULES = {
 
 
 def _stage_for(race: pd.DataFrame) -> tuple[str, str]:
-    """Return (model mode, snapshot stage) for the information currently available."""
-    if pd.to_numeric(race["sprint_position"], errors="coerce").gt(0).any():
+    """Return (model mode, snapshot stage) for the information currently available.
+
+    ``post_sprint`` was trained and evaluated only on races with both a sprint result
+    and Grand Prix qualifying. On the 2024+ sprint format the sprint runs *before* GP
+    qualifying, so between the two a sprint result alone must not select it: that
+    model would have its qualifying and grid inputs imputed. Use ``pre_quali`` (which
+    ignores the sprint) until qualifying is known.
+    """
+    has_quali = race["quali_position"].notna().any()
+    has_sprint = pd.to_numeric(race["sprint_position"], errors="coerce").gt(0).any()
+    if has_sprint and has_quali:
         return "post_sprint", "post_sprint"
-    if race["quali_position"].notna().any():
+    if has_quali:
         return "post_quali", "post_quali_pre_sprint"
     return "pre_quali", "pre_quali"
 
