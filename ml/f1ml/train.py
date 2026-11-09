@@ -632,29 +632,36 @@ def _walk_forward_eval(
 
 
 def _add_compat_aliases(metrics: dict) -> None:
+    """Flat summary keys for the dashboard.
+
+    These average the **2026 walk-forward races only** (out-of-sample, but one
+    season), so they are named ``oos2026_*``. They replace the old ``test_*`` /
+    ``test_rf_*`` keys, which read like a generic test set ("rf" was a leftover from
+    a random-forest model). Training diagnostics stay under explicit ``train_*`` keys.
+    """
     wf_results = metrics["walk_forward"]
     oos = metrics["oos"]
-    metrics["test_pre_quali"] = {
-        "test_pre_quali_hit": oos.get("oos_pre_hit", 0),
-        "test_pre_quali_log_loss": oos.get("oos_pre_log_loss", 0),
+    metrics["oos2026_pre_quali"] = {
+        "oos2026_pre_quali_hit": oos.get("oos_pre_hit", 0),
+        "oos2026_pre_quali_log_loss": oos.get("oos_pre_log_loss", 0),
     }
-    metrics["test_post_quali"] = {
-        "test_post_quali_hit": oos.get("oos_post_hit", 0),
-        "test_post_quali_log_loss": oos.get("oos_post_log_loss", 0),
-        "test_post_quali_quali_gap_log_loss": oos.get("oos_post_quali_gap_log_loss", 0),
+    metrics["oos2026_post_quali"] = {
+        "oos2026_post_quali_hit": oos.get("oos_post_hit", 0),
+        "oos2026_post_quali_log_loss": oos.get("oos_post_log_loss", 0),
+        "oos2026_post_quali_quali_gap_log_loss": oos.get("oos_post_quali_gap_log_loss", 0),
     }
-
-    # Compatibility aliases are out-of-sample only. Training diagnostics use
-    # the explicit train_* keys above.
     wf26_post = [r for r in wf_results if r.get("test_season") == EVAL_YEAR and "post_hit" in r]
-    metrics["test_pole_hit"] = float(np.mean([r["post_pole_hit"] for r in wf26_post])) if wf26_post else 0.0
-    metrics["test_champ_hit"] = float(np.mean([r.get("post_champ_hit", 0.0) for r in wf26_post])) if wf26_post else 0.0
-    metrics["test_rf_hit"] = float(np.mean([r["post_hit"] for r in wf26_post])) if wf26_post else 0
-    metrics["test_rf_top3"] = float(np.mean([r["post_top3"] for r in wf26_post])) if wf26_post else 0
+
+    def _mean(key: str) -> float:
+        return float(np.mean([r.get(key, 0.0) for r in wf26_post])) if wf26_post else 0.0
+
+    metrics["oos2026_post_quali"]["oos2026_post_quali_pole_hit"] = _mean("post_pole_hit")
+    metrics["oos2026_post_quali"]["oos2026_post_quali_champ_hit"] = _mean("post_champ_hit")
+    metrics["oos2026_post_quali"]["oos2026_post_quali_top3"] = _mean("post_top3")
     metrics["train_pole_hit"] = metrics["train_post_quali"].get("train_post_quali_pole_hit", 0)
     metrics["train_champ_hit"] = metrics["train_post_quali"].get("train_post_quali_champ_hit", 0)
-    metrics["train_rf_hit"] = metrics["train_post_quali"].get("train_post_quali_hit", 0)
-    metrics["train_rf_top3"] = metrics["train_post_quali"].get("train_post_quali_top3", 0)
+    metrics["train_model_hit"] = metrics["train_post_quali"].get("train_post_quali_hit", 0)
+    metrics["train_model_top3"] = metrics["train_post_quali"].get("train_post_quali_top3", 0)
     metrics["walk_forward_protocol"] = "One race per test fold; train/calibration data end before test race; production Monte Carlo Plackett-Luce scorer."
 
 

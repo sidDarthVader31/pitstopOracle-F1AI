@@ -34,10 +34,10 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Races in dataset", eda.get("n_races", "—"))
 c2.metric("Pole win rate", f"{eda.get('pole_win_rate', 0):.1%}")
 c3.metric(
-    "Post-quali hit (WF 2026)",
-    f"{oos.get('oos_post_hit', metrics.get('test_rf_hit', 0)):.1%}",
+    "Post-quali hit (2026 out-of-sample)",
+    f"{oos.get('oos_post_hit', metrics.get('oos2026_post_quali', {}).get('oos2026_post_quali_hit', metrics.get('test_rf_hit', 0))):.1%}",
 )
-c4.metric("Post log-loss (WF 2026)", f"{oos.get('oos_post_log_loss', 0):.3f}")
+c4.metric("Post log-loss (2026 out-of-sample)", f"{oos.get('oos_post_log_loss', 0):.3f}")
 
 tab_pre, tab_post, tab_wf = st.tabs(["Pre-quali", "Post-quali", "Walk-forward"])
 
@@ -49,7 +49,7 @@ with tab_pre:
     with col_a:
         st.markdown(
             f"""
-            | Method | Train (in-sample) | Walk-forward 2026 |
+            | Method | Train (in-sample) | 2026 out-of-sample |
             |---|---:|---:|
             | Model winner hit | {train_pre.get('train_pre_quali_hit', 0):.1%} | {oos.get('oos_pre_hit', 0):.1%} |
             | Model top-3 | {train_pre.get('train_pre_quali_top3', 0):.1%} | {oos.get('oos_pre_top3', 0):.1%} |
@@ -60,7 +60,7 @@ with tab_pre:
     with col_b:
         st.markdown(
             f"""
-            | Metric | Walk-forward 2026 |
+            | Metric | 2026 out-of-sample |
             |---|---:|
             | Log-loss | {oos.get('oos_pre_log_loss', 0):.3f} |
             | Races | {oos.get('oos_n_races', 0)} |
@@ -78,7 +78,7 @@ with tab_post:
     with col_a:
         st.markdown(
             f"""
-            | Method | Train | Walk-forward 2026 |
+            | Method | Train | 2026 out-of-sample |
             |---|---:|---:|
             | Model | {train_post.get('train_post_quali_hit', 0):.1%} | {oos.get('oos_post_hit', 0):.1%} |
             | Pole | {train_post.get('train_post_quali_pole_hit', 0):.1%} | {oos.get('oos_post_pole_hit', 0):.1%} |
@@ -100,7 +100,7 @@ with tab_post:
         )
 
 with tab_wf:
-    st.subheader("Walk-forward 2026 (primary shipping metric)")
+    st.subheader("2026 out-of-sample walk-forward (primary shipping metric)")
     if wf26:
         st.dataframe(
             [
@@ -125,7 +125,7 @@ with tab_wf:
             f"(quali-gap baseline: {oos.get('oos_post_quali_gap_log_loss', 0):.3f})"
         )
     else:
-        st.info("Walk-forward 2026 results appear after training.")
+        st.info("2026 out-of-sample results appear after training.")
 
     if transfer.get("transfer_n_test_races", 0) > 0:
         st.subheader("Transfer diagnostic (train <2026 → test 2026)")
@@ -134,7 +134,7 @@ with tab_wf:
             | Split | Races | Post hit | Post log-loss | Quali-gap LL |
             |---|---:|---:|---:|---:|
             | Train ≤2025 | {transfer.get('transfer_n_train_races', 0)} | — | — | — |
-            | Test 2026 | {transfer.get('transfer_n_test_races', 0)} | {transfer.get('transfer_post_hit', 0):.1%} | {transfer.get('transfer_post_log_loss', 0):.3f} | {transfer.get('transfer_quali_gap_log_loss', 0):.3f} |
+            | 2026 out-of-sample | {transfer.get('transfer_n_test_races', 0)} | {transfer.get('transfer_post_hit', 0):.1%} | {transfer.get('transfer_post_log_loss', 0):.3f} | {transfer.get('transfer_quali_gap_log_loss', 0):.3f} |
             """
         )
 
