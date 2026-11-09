@@ -12,7 +12,7 @@
 | 1 | Current-race `race_pace_delta` leaking into pre-race features | **PASS** | It isn't a model feature. `car_race_pace_ewma` is assigned before the race's own pace is folded in. A new regression test guards this. |
 | 2 | Observed weather in training vs forecast weather live | **PASS** | No weather column is a model feature. Wet weather is only an explicit what-if. |
 | 3 | Practice-session eligibility on sprint weekends | **PASS (not applicable)** | No practice feature is used by any model stage. |
-| 4 | `sprint_position` used before the sprint | **PASS for leakage / FAIL for live stage selection** | The feature only enters `post_sprint`. But live code switches to `post_sprint` as soon as a 2024+ sprint finishes, before Grand Prix qualifying exists. |
+| 4 | `sprint_position` used before the sprint | **PASS for leakage / FIXED live stage selection** | The feature only enters `post_sprint`. The live code used to switch to `post_sprint` as soon as a 2024+ sprint finished, before Grand Prix qualifying existed. Fixed by workstream D on 2026-11-09 (see item 4). |
 | 5 | DNF training population filtered to classified finishers | **PASS** | Retirements are kept. Only DNS, DSQ and withdrawals are unlabelled. |
 | 6 | Fixed DNF score penalty | **PASS** | Gone. DNF is simulated separately in the Monte Carlo. Related gap: the pace model also learns from retirees' back-of-field positions. |
 | 7 | Eval vs inference mismatches; mislabelled `test_*` metrics | **FAIL → FIXED (leak), PARTIAL (rest)** | **Leak fixed:** the walk-forward scored only drivers who later got a DNF label, dropping disqualified and non-starting drivers with hindsight. Smaller mismatches remain (listed below). The `test_*` keys are out-of-sample but cover 2026 only. |
@@ -43,6 +43,7 @@
 ### 4. `sprint_position` before the sprint: PASS (leakage) / FAIL (live stage selection)
 - `sprint_position` is only added in `post_sprint` (`ml/f1ml/specs.py:60`, `ml/f1ml/specs.py:148`). It's excluded from `pre_quali` and `post_quali` (asserted at `ml/tests/test_features.py:59`). The walk-forward only scores `post_sprint` on rows where the sprint has a result (`ml/f1ml/train.py`, the `te_sprint` block).
 - **Mismatch (not fixed: it's an eval/inference mismatch, not leakage).** `race_weekend._stage_for` (`ml/race_weekend.py:48-54`) and `predict._race_status_row` / `race_status` (`ml/f1ml/predict.py:136-154`) choose `post_sprint` whenever a sprint result exists. On the 2024+ sprint format the sprint runs **before** Grand Prix qualifying. So between Saturday's sprint and qualifying, the live forecast uses the `post_sprint` model with **no qualifying or grid inputs**, which get imputed. That model was trained only on rows that had both. Fix: choose `post_sprint` only when qualifying is also known; before that, use `pre_quali`, which ignores the sprint, or train a "post-sprint, pre-quali" stage. Backlog **P1**.
+- **Fixed (workstream D, 2026-11-09, commit "Fix sprint-weekend stage selection").** `_stage_for`, `_race_status_row` and `race_status` now need GP qualifying as well as a sprint result before choosing `post_sprint`. Between the sprint and qualifying they use `pre_quali`. Regression tests: `ml/tests/test_weekend_predict.py::test_weekend_stage_needs_quali_before_post_sprint` and `::test_race_status_needs_quali_before_post_sprint`.
 
 ### 5. DNF training population: PASS
 - `_load_training_frame` keeps every row with a DNF label (`ml/f1ml/train.py:44-48`). Retirements are labelled 1 and kept: 311 DNF rows vs 1,916 finishers.
@@ -66,7 +67,7 @@
 |---|---|---|---|
 | Final fit | Fit on races before the last 10 pre-test races; those 10 are used only to fit the temperature (`ml/f1ml/train.py`, fold loop) | Calibrate on the last 10, then **refit on all** completed races and keep that temperature (`ml/race_weekend.py:67-76`) | Live models see 10 more races than the evaluated ones. Temperature is fitted on a model that is then replaced. Likely small, untested. |
 | Monte Carlo samples | 1,200 per race (`ml/f1ml/train.py:132`); temperature fit uses 100 (`ml/f1ml/train.py:196`) | 6,000 (`ml/race_weekend.py:38`); temperature fit uses 300 | Win probabilities use the exact formula, so the impact is mainly on podium and points noise. |
-| Sprint-weekend stage | `post_sprint` evaluated only with qualifying known | Used before qualifying (item 4) | Wrong model between the sprint and qualifying. |
+| Sprint-weekend stage | `post_sprint` evaluated only with qualifying known | **Fixed:** now also needs qualifying (item 4) | None remaining. |
 
 **`test_*` metric labels.** `metrics.json` `test_pre_quali`, `test_post_quali`, `test_rf_hit` and `test_rf_top3` are genuinely out-of-sample. But they average **2026 walk-forward races only** (`ml/f1ml/train.py:617`, `ml/f1ml/train.py:628-639`), while the dashboard reads them as generic "test" performance (`ml/f1ml/ui/charts.py:55-86`). "rf" is a leftover from an old random-forest model. Not a leak: rename these in the UI to "2026 out-of-sample" when the dashboard is reworked (backlog P3).
 
@@ -116,3 +117,43 @@
 | P3 | One `ERA_RESET_YEAR` constant (replace the copy in `ratings.py` and the literal at `features.py:308`). | Hygiene before the next regulation change. | grep finds one definition. |
 | P3 | Rename the `test_*` / `test_rf_*` metric keys and their UI labels to "2026 out-of-sample". | Avoids misleading accuracy text. | Dashboard shows the correct label. |
 | P3 | Replace or retire the DNF model's predictive role (survival model, part failures, penalties). | ROC-AUC ~0.5. | Out-of-sample ROC-AUC > 0.6 before any DNF claim. |
+
+## Workstream D results and G3 status (2026-11-09)
+
+**Branch:** `claude/ml-fixes-6f0fa2`. One commit per fix or experiment. `pytest ml/tests`: **66 passed, 1 skipped**. No model artifact was written or promoted. The live weekend recipe is unchanged until the owner approves.
+
+| Backlog item | Outcome | Evidence |
+|---|---|---|
+| P1 Sprint-weekend stage selection | **Fixed** | Item 4 above. Regression tests added. |
+| P1 Calibrate the favourites | **Done: keep** a calibration fitted on all earlier walk-forward races. On today's pace model, rolling temperature + grid blend: 2025–26 post-quali 1.265 vs grid 1.386, top bucket 60% said / 65% won. | [`EXP-005`](experiments/EXP-005-calibration.md) |
+| P2 Stop double-counting retirements | **Done: keep** `F1ML_PACE_TRAIN=classified`. Post-quali 1.443 → 1.305 (all 91), 1.410 → 1.225 (2025–26), 1.637 → 1.249 (2026; the CI excludes zero). Favourites stop being over-confident. Post-sprint stage worse (12 races). | [`EXP-006`](experiments/EXP-006-classified-pace.md) |
+| Fantasy outputs check | **Done.** Expected finish is better than baselines (0.2–0.45 places). Pre-quali podium is slightly better. Points-finish chances and pick-5 are no better than grid- or form-rank tables. `fantasy.py` expected points fixed to use the simulated distribution (live dashboard). | [`EXP-007`](experiments/EXP-007-fantasy-outputs.md) |
+| P3 One `ERA_RESET_YEAR` | **Done.** Only `specs.py` defines it. | Hygiene commit |
+| P3 `test_*` keys and UI labels | **Done.** Keys are now `oos2026_*` and `train_model_*`. The dashboard says "2026 out-of-sample" and still reads old `metrics.json` files. | Hygiene commit, `tests/test_dashboard_contract.py` |
+
+**Recommended recipe** (owner approval needed): pace model on classified finishers (EXP-006) + temperature fitted on all earlier walk-forward races (EXP-005). Walk-forward post-quali log-loss: **1.276** over all 91 races (grid 1.488), **1.184** in 2025–26 (grid 1.386; difference −0.20, 95% CI −0.62 to +0.10), **1.210** in 2026 (grid 1.617). The 2025–26 top bucket is 59% said / 59% won. Internal market benchmark: 1.289 vs market 1.172 (+0.12, CI −0.02 to +0.26). Still behind the market, and that's only a benchmark.
+
+### G3 "model launch-worthy" (target 2027-01-31)
+
+| G3 condition | Approved model today | Recommended recipe (EXP-005 + EXP-006) | Status |
+|---|---|---|---|
+| No known leakage | No leak open after workstream B's audit. D's changes affect training rows and calibration only, both fitted on earlier races. | Same | **Pass** |
+| Post-quali beats the grid on walk-forward | **No** for 2025–26 (1.410 vs 1.386) and 2026 (1.637 vs 1.617). Yes over all 91 (1.443 vs 1.488). | **Yes on point estimates** in every window (1.184 vs 1.386 in 2025–26; 1.210 vs 1.617 in 2026). Not statistically proven: the CI includes zero. The grid-blend calibration variant's 2025–26 CI excludes zero (−0.41 to −0.02). | **Met only if the recipe is adopted** |
+| Probabilities are calibrated | **No.** Winner top bucket 64% said / 43% won in 2025–26. | **Winner: yes.** Top bucket within ±10 points in every window (n = 17–46, wide intervals). **Points-finish (top 10): no.** Midfield over-confident (EXP-007). | **Partial** |
+| Live shadow record published | Not workstream D's task (coordinator) | — | **Open** |
+
+**Overall G3 verdict: not passed yet, but on track.** What's left, in order:
+1. The owner approves the recommended recipe (it changes the approved model).
+2. Wire it into `race_weekend.train_weekend_bundle` **and** the walk-forward through one shared function (backlog P2, "align eval with production"). Keep `post_sprint` on the old training set or re-check it. Regenerate `EVAL.md` and re-run `scripts/market_benchmark.py report`.
+3. Calibrate points-finish probabilities: a separate temperature for positions beyond the winner (EXP-007 follow-up). Needed before the product shows "chance of points" as a calibrated number.
+4. The coordinator's live shadow record.
+
+### Claims after workstream D
+
+| Claim | OK? | Basis |
+|---|---|---|
+| "Beats the starting grid after qualifying" | Only once the recipe is adopted, and with a caveat ("on average, over 43 races") | EXP-005/006 |
+| "Well-calibrated win chances" | Only once the recipe is adopted | EXP-005/006 |
+| "Expected finishing position is more accurate than grid/form" | **Yes** | EXP-007: CI excludes zero in every window |
+| "Calibrated chance of scoring points" | **No** | EXP-007 |
+| "Helps you pick a better Fantasy team" | **No** (same as top-5 by grid or form) | EXP-007 |
