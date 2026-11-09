@@ -28,11 +28,11 @@ We have never compared the model with the betting market.
 ## Workstreams
 | ID | Workstream | Wave | Session | Output |
 |---|---|---|---|---|
-| A | Market research (UK/EU bettors, fantasy, competitors, regulation, pricing) | 1 (now) | _tbd_ | `docs/product/MARKET_RESEARCH.md` |
+| A | Market research (UK/EU bettors, fantasy, competitors, regulation, pricing) | 1 — done | market-research | `docs/product/MARKET_RESEARCH.md` |
 | B | Model-vs-market benchmark + integrity re-audit | 1 (now) | done 2026-11-09 | `docs/experiments/EXP-004-market-benchmark.md`, `docs/ML_LAUNCH_READINESS.md` |
 | — | Live shadow test: save forecasts before each remaining 2026 race | 1 | coordinator | `ml/` forecast snapshots |
-| C | Product design: personas, MVP spec, Streamlit wireframes | 2 (Dec) | _tbd_ | `docs/product/MVP_SPEC.md` |
-| D | ML improvement experiments, one change each | 2 (Dec–Jan) | _tbd_ | `docs/experiments/EXP-00x-*.md` |
+| C | Product design: personas, MVP spec, Streamlit wireframes | 2 — started 2026-11-09 | product-design | `docs/product/MVP_SPEC.md` |
+| D | ML fixes: calibration, sprint stage, retirements, fantasy-output eval | 2 — started 2026-11-09 | ml-fixes | `docs/experiments/EXP-00x-*.md` |
 | E | Engineering and ops: Streamlit MVP, automated weekend runs, hosting | 3 (Jan–Feb) | _tbd_ | Running app |
 
 ## Gates
@@ -56,3 +56,4 @@ We have never compared the model with the betting market.
 - **2026-11-09. G1 market verdict (workstream B): the model loses to the market. Position as a fantasy/race-insight tool, not "value bets".** On the same 50 races (2024 Italian GP to 2026 Mexico City GP), Polymarket's de-margined winner probabilities scored log-loss **1.172 after qualifying vs 1.485 for the model** (grid 1.563). Model minus market: +0.31, 95% CI +0.11 to +0.51. The model is better in only 16 of 50 races. Before the weekend: market 1.735 vs model 1.989 (CI +0.02 to +0.51). A 50/50 model+market blend doesn't beat the market. Backing drivers whenever the model's probability is above the market's returned about −51% ROI after qualifying. Main weakness: the model's 50%+ favourites win only 39% of the time. No usable odds exist for 2022–23 without a Betfair account or a paid feed (not signed up for: owner decision). Integrity re-audit: one evaluation leak fixed (disqualified and non-starting drivers were dropped from scored fields). The re-run walk-forward post-quali log-loss is now 1.443 vs grid 1.488, and 1.637 vs 1.617 in 2026. The DNF model (ROC-AUC 0.55) supports no launch claims. Details: `docs/experiments/EXP-004-market-benchmark.md`, `docs/ML_LAUNCH_READINESS.md`. Owner still to confirm the positioning decision at G1.
 - **2026-11-09 (G1).** Workstream B (EXP-004, branch `claude/market-benchmark-25777b`) found that the model loses to the de-margined Polymarket prices at every stage. Post-quali log-loss is 1.485 for the model vs 1.172 for the market, over 50 races. Workstream A (branch `claude/market-research-351da2`) recommended Option B, "transparent F1 analytics plus fantasy helper". **Owner decision: adopt Option B with no betting features at all, including no odds or market-comparison view and no affiliate links, to stay free of gambling-compliance constraints.** Wording in A's doc about a "market-check view" is superseded by this entry.
 - **2026-11-09.** Converted the v3 PRD, ML Design and ERD PDFs to markdown in `docs/product/`. They predate the current code; see the status note in each file.
+- **2026-11-09.** Merged workstreams A and B into `product-roadmap`. Tests pass (51 passed, 1 skipped). Started wave 2: C (product design → `MVP_SPEC.md`, gate G2) and D (ML fixes → gate G3). Market odds stay an internal benchmark only and are not used as a model input.
