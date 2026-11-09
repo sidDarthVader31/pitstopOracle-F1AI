@@ -425,11 +425,24 @@ def _write_eval_md(metrics: dict) -> None:
     (REPORTS / "EVAL.md").write_text("\n".join(lines))
 
 
-def _prediction_rows(scored: pd.DataFrame, stage: str) -> list[dict]:
-    """Per-driver out-of-sample probabilities for external comparisons (e.g. the market)."""
-    cols = ["season", "round", "driver_id", "family_name", "grid", "won", "podium", "win_prob", "podium_prob"]
-    out = scored[[c for c in cols if c in scored.columns]].copy()
+PREDICTION_COLUMNS = [
+    "season", "round", "driver_id", "family_name", "constructor_id", "grid", "quali_position",
+    "position", "status", "dnf", "won", "podium", "points_finish",
+    "pace_score", "dnf_prob", "win_prob", "podium_prob", "points_prob", "expected_finish",
+]
+
+
+def _prediction_rows(scored: pd.DataFrame, stage: str, temperature: float | None = None) -> list[dict]:
+    """Per-driver out-of-sample probabilities for external comparisons (e.g. the market).
+
+    Also carries the raw pace score, DNF probability, calibration temperature and the
+    full finishing-position distribution so experiments can re-score a fold offline.
+    """
+    positions = [c for c in scored.columns if c.startswith("finish_p") and c.endswith("_prob")]
+    out = scored[[c for c in PREDICTION_COLUMNS + positions if c in scored.columns]].copy()
     out["stage"] = stage
+    if temperature is not None:
+        out["temperature"] = float(temperature)
     return out.to_dict("records")
 
 
@@ -536,7 +549,7 @@ def _walk_forward_eval(
         dnf_y = dnf_rows["dnf"].astype(int).to_numpy()
         pre_prob = pre_scored["win_prob"]
         if predictions_out is not None:
-            predictions_out.extend(_prediction_rows(pre_scored, "pre_quali"))
+            predictions_out.extend(_prediction_rows(pre_scored, "pre_quali", pre_f.temperature))
         prior_p = prior_form_probabilities(te)
         test_date = str(pd.to_datetime(te["date"]).min().date()) if "date" in te else None
         wf_row = {
@@ -569,7 +582,7 @@ def _walk_forward_eval(
             )
             post_scored = _score_bundle(te_post, post_f)
             if predictions_out is not None:
-                predictions_out.extend(_prediction_rows(post_scored, "post_quali"))
+                predictions_out.extend(_prediction_rows(post_scored, "post_quali", post_f.temperature))
             pole_p = pole_probabilities(te_post)
             qg_p = quali_gap_probabilities(te_post)
             grid_p = grid_probabilities(te_post)
@@ -605,7 +618,7 @@ def _walk_forward_eval(
             )
             sprint_scored = _score_bundle(te_sprint, sprint_f)
             if predictions_out is not None:
-                predictions_out.extend(_prediction_rows(sprint_scored, "post_sprint"))
+                predictions_out.extend(_prediction_rows(sprint_scored, "post_sprint", sprint_f.temperature))
             wf_row["sprint_hit"] = winner_hit_rate(te_sprint, sprint_scored["win_prob"])
             wf_row["sprint_top3"] = topk_hit_rate(te_sprint, sprint_scored["win_prob"], k=3)
             wf_row["sprint_log_loss"] = race_log_loss(te_sprint, sprint_scored["win_prob"])
