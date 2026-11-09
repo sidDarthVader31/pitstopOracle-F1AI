@@ -5,11 +5,13 @@
 
 Every workstream session reads this file first. When a session finishes, it adds a dated entry to the **Decision log** at the bottom.
 
-## Product direction (decided 2026-11-09)
-- **First market:** UK/EU bettors, plus F1 Fantasy players. We sell forecasts and insights only. We never take bets.
+## Product direction (decided 2026-11-09, revised the same day after G1)
+- **Product:** an **F1 analytics and fantasy helper** for engaged fans and F1 Fantasy players. **No betting features of any kind:** no odds display, no market comparison in the product, no bookmaker affiliate links, no "value" or tip language. The owner wants a product without gambling-compliance constraints.
+- **Still applies:** trademark care with the "F1" and "Formula 1" names, data-source terms, and UK subscription rules (from 2027-01-01) if we ever charge.
+- **Market data stays internal.** It is used only as an internal benchmark to measure model quality (EXP-004), never shown to users.
 - **UI:** Streamlit until both the features and the model are launch-worthy. After launch we build a real web app (FastAPI + React) with accounts and payments.
-- **Existing product vision:** the PRD, ERD and ML Design v3 PDFs in `docs/v2/`. Markdown copies will be added at `docs/product/PRD_v3.md` and the matching files, once the owner exports the text.
-- **The question that decides positioning:** bettors compare us with **bookmaker and Betfair odds**, not with the starting grid. If our probabilities are at least as accurate as the market's (with the bookmaker margin removed), we can offer "value" insights. If they are not, we position as a fantasy and race-insight tool.
+- **Existing product vision:** the v3 PRD, ML Design and ERD, now in markdown at [`PRD_v3.md`](PRD_v3.md), [`ML_MODEL_DESIGN_v3.md`](ML_MODEL_DESIGN_v3.md) and [`ERD_DATA_MODEL_v3.md`](ERD_DATA_MODEL_v3.md). The PDF originals are in `docs/v2/`. They were written from an old README, not the current code, so read the "Status vs current code" note at the top of each.
+- **Positioning (G1, resolved):** the model loses clearly to the betting market (EXP-004). That, plus the owner's decision, settles the positioning on fantasy and analytics.
 
 ## Where the model stands (from `ml/reports/EVAL.md`, 91 out-of-sample races, 2022–2026)
 Log-loss scores how good the probabilities are; lower is better.
@@ -36,7 +38,7 @@ We have never compared the model with the betting market.
 ## Gates
 | Gate | Target date | Pass condition |
 |---|---|---|
-| G1 Market verdict | 2026-11-30 | B's benchmark is done, and positioning is decided: value insights, or a fantasy/insight tool. |
+| G1 Market verdict | 2026-11-30 | **Passed 2026-11-09.** The model loses to the market, and we chose fantasy/analytics with no betting. |
 | G2 MVP scope frozen | 2026-12-15 | The owner approves `MVP_SPEC.md`. |
 | G3 Model launch-worthy | 2027-01-31 | No known leakage. Post-quali beats the grid on walk-forward. Probabilities are calibrated. A live shadow record is published. |
 | G4 Launch | 2027 opener | The Streamlit MVP is live, weekend runs are automated, and the track-record page is up. |
@@ -50,3 +52,5 @@ We have never compared the model with the betting market.
 
 ## Decision log
 - **2026-11-09.** Chose UK/EU bettors as the first market. Streamlit stays the UI until launch, and the real web app comes after launch. Workstreams run as separate Claude sessions coordinated from the main session. Note: this branch is based on `starting-grid` (commit 75ffc3f, official starting grid), which is not merged into `main` yet.
+- **2026-11-09 (G1).** Workstream B (EXP-004, branch `claude/market-benchmark-25777b`) found that the model loses to the de-margined Polymarket prices at every stage. Post-quali log-loss is 1.485 for the model vs 1.172 for the market, over 50 races. Workstream A (branch `claude/market-research-351da2`) recommended Option B, "transparent F1 analytics plus fantasy helper". **Owner decision: adopt Option B with no betting features at all, including no odds or market-comparison view and no affiliate links, to stay free of gambling-compliance constraints.** Wording in A's doc about a "market-check view" is superseded by this entry.
+- **2026-11-09.** Converted the v3 PRD, ML Design and ERD PDFs to markdown in `docs/product/`. They predate the current code; see the status note in each file.
