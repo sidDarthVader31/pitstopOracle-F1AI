@@ -30,14 +30,24 @@ pip install -r requirements.txt
 ## Race-weekend loop (retrain every race)
 
 ```bash
-python race_weekend.py before --season 2026 --round 20   # after qualifying, before the race
-python race_weekend.py after  --season 2026 --round 20   # once results are published
+python race_weekend.py before --season 2026 --round 21   # Thu/Fri, >= 1 h before the team lock
+python race_weekend.py update --season 2026 --round 21   # after qualifying / official grid
+python race_weekend.py after  --season 2026 --round 21   # once results are published
+python race_weekend.py verify                            # ledger integrity check
 ```
 
-`before` downloads the latest data, retrains on every completed race, saves the models
-(previous copy goes to `models/archive/`), prints the forecast and saves it under
-`reports/forecasts/`. `after` scores that saved forecast against the real result,
-appends it to `reports/live_tracking.csv`, and adds it to the calibration history.
+`before` downloads the latest data, retrains on every completed race, and replaces the live
+models (previous copy to `models/archive/`) only if `lifecycle.weekly_refit_checks` passes;
+otherwise the retrain goes to `models/candidates/`. It then freezes a forecast snapshot in
+the **ledger** (`ledger/`: content-hashed, append-only, hash-chained index; never
+overwritten). `update` freezes another snapshot after qualifying without retraining. `after`
+scores every snapshot of the race (including fantasy points), appends to
+`ledger/scores.jsonl` and `reports/live_tracking.csv`, and adds the race to the calibration
+history. `--dry-run` writes to a temporary ledger and touches nothing else. Exact times per
+weekend: [`docs/RUNBOOK_RACE_WEEKEND.md`](../docs/RUNBOOK_RACE_WEEKEND.md).
+
+Fantasy: scoring rules in `data/manual/fantasy_rules_<season>.toml`; prices entered weekly in
+`data/manual/fantasy_prices.csv` and checked with `python scripts/check_prices.py`.
 
 Recipe since 2026-11-10 (EXP-005 + EXP-006, owner-approved): the pace model learns only
 from classified finishers (retirements are left to the DNF model), and how confident to
