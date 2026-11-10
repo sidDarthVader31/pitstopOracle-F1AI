@@ -315,3 +315,14 @@ def lineup_to_dataframe(lineup: FantasyLineup) -> pd.DataFrame:
     for c in lineup.constructors:
         rows.append({"Role": "Constructor", "Name": c["name"], "Team": "", "Cost ($M)": c["cost_m"], "Exp pts": c["expected_pts"]})
     return pd.DataFrame(rows)
+
+
+def snapshot_fantasy(scored: pd.DataFrame, *, season: int, round_num: int, bundle=None, race=None) -> dict:
+    """Fantasy block for a ledger snapshot (expected points per driver)."""
+    pts = expected_driver_fantasy_points(scored)
+    return {"drivers": {d: {"expected": float(p)} for d, p in zip(scored["driver_id"], pts)}}
+
+
+def score_snapshot_fantasy(payload: dict, race: pd.DataFrame) -> dict:
+    """Projected vs actual fantasy points for a scored snapshot (filled in by the scoring rules)."""
+    return {}
