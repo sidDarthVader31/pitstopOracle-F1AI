@@ -1,0 +1,861 @@
+{
+  "tag": "pace_classified",
+  "stages": {
+    "pre_quali": {
+      "all": {
+        "races": 91,
+        "table": {
+          "finish_mae": {
+            "base_rate": NaN,
+            "baseline_rank": 3.4787,
+            "hindsight_best": NaN,
+            "model": 2.6908,
+            "rank_mean": 3.1462,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "pick5_pts": {
+            "base_rate": NaN,
+            "baseline_rank": 54.1538,
+            "hindsight_best": 80.0,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 54.8242,
+            "xp_dist": 56.6264
+          },
+          "podium_brier": {
+            "base_rate": 0.1256,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.0908,
+            "rank_mean": NaN,
+            "rank_rate": 0.0966,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "podium_ll": {
+            "base_rate": 0.4179,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.294,
+            "rank_mean": NaN,
+            "rank_rate": 0.3097,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_brier": {
+            "base_rate": 0.2496,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.1728,
+            "rank_mean": NaN,
+            "rank_rate": 0.1838,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_ll": {
+            "base_rate": 0.6923,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.5559,
+            "rank_mean": NaN,
+            "rank_rate": 0.5494,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.5834,
+            "hindsight_best": NaN,
+            "model": 0.5979,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "xp_mae": {
+            "base_rate": NaN,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 6.3931,
+            "xp_dist": 6.8657
+          },
+          "xp_rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.5581,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 0.4803,
+            "xp_dist": 0.5264
+          }
+        },
+        "paired_ci": {
+          "points_ll: model - rank_rate": [
+            0.006569394890459927,
+            -0.03586340981754854,
+            0.052616015828359286
+          ],
+          "podium_ll: model - rank_rate": [
+            -0.01570571567487069,
+            -0.04485688870466902,
+            0.016844571401383443
+          ],
+          "points_brier: model - rank_rate": [
+            -0.010995099952387724,
+            -0.02341734624468961,
+            0.0010027762944558659
+          ],
+          "finish_mae: model - rank_mean": [
+            -0.4554086565072524,
+            -0.5980395103079752,
+            -0.3151195346732634
+          ],
+          "rank_corr: model - baseline_rank": [
+            0.014501876025249664,
+            -0.023803916743602924,
+            0.0544943086770481
+          ],
+          "pick5_pts: xp_dist - baseline_rank": [
+            2.4725274725274726,
+            -1.4953296703296701,
+            6.439835164835161
+          ],
+          "pick5_pts: xp_dist - xp_current": [
+            1.8021978021978022,
+            -0.14285714285714285,
+            3.7472527472527473
+          ],
+          "xp_rank_corr: xp_dist - xp_current": [
+            0.046106662412287065,
+            0.03596693420934905,
+            0.056868469295432544
+          ],
+          "xp_mae: xp_dist - xp_current": [
+            0.4726983722677561,
+            0.3798979305052851,
+            0.5671152073520712
+          ]
+        }
+      },
+      "2025-26": {
+        "races": 43,
+        "table": {
+          "finish_mae": {
+            "base_rate": NaN,
+            "baseline_rank": 3.2277,
+            "hindsight_best": NaN,
+            "model": 2.7493,
+            "rank_mean": 2.956,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "pick5_pts": {
+            "base_rate": NaN,
+            "baseline_rank": 56.093,
+            "hindsight_best": 80.0,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 55.7209,
+            "xp_dist": 55.3953
+          },
+          "podium_brier": {
+            "base_rate": 0.1233,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.0809,
+            "rank_mean": NaN,
+            "rank_rate": 0.0856,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "podium_ll": {
+            "base_rate": 0.4122,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.2494,
+            "rank_mean": NaN,
+            "rank_rate": 0.271,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_brier": {
+            "base_rate": 0.2491,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.1842,
+            "rank_mean": NaN,
+            "rank_rate": 0.1785,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_ll": {
+            "base_rate": 0.6913,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.562,
+            "rank_mean": NaN,
+            "rank_rate": 0.5365,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.6234,
+            "hindsight_best": NaN,
+            "model": 0.5815,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "xp_mae": {
+            "base_rate": NaN,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 6.6698,
+            "xp_dist": 7.0492
+          },
+          "xp_rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.5852,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 0.4251,
+            "xp_dist": 0.4841
+          }
+        },
+        "paired_ci": {
+          "points_ll: model - rank_rate": [
+            0.025486162389531,
+            -0.01712317051070229,
+            0.0734277036132208
+          ],
+          "podium_ll: model - rank_rate": [
+            -0.021604978203832816,
+            -0.04238636039578431,
+            0.0008294666648236031
+          ],
+          "points_brier: model - rank_rate": [
+            0.00573853299102591,
+            -0.008437764763440412,
+            0.020931696964381286
+          ],
+          "finish_mae: model - rank_mean": [
+            -0.20673422067312142,
+            -0.3413226037483806,
+            -0.059853053269822924
+          ],
+          "rank_corr: model - baseline_rank": [
+            -0.041811003287241924,
+            -0.08964445595558895,
+            0.003517807295147432
+          ],
+          "pick5_pts: xp_dist - baseline_rank": [
+            -0.6976744186046512,
+            -5.558720930232558,
+            4.0
+          ],
+          "pick5_pts: xp_dist - xp_current": [
+            -0.32558139534883723,
+            -3.4651162790697674,
+            2.6744186046511627
+          ],
+          "xp_rank_corr: xp_dist - xp_current": [
+            0.05903613288777669,
+            0.041806806501151365,
+            0.0765500538944154
+          ],
+          "xp_mae: xp_dist - xp_current": [
+            0.37939418325711505,
+            0.23000863426224152,
+            0.5309873319599057
+          ]
+        }
+      },
+      "2026": {
+        "races": 19,
+        "table": {
+          "finish_mae": {
+            "base_rate": NaN,
+            "baseline_rank": 3.0347,
+            "hindsight_best": NaN,
+            "model": 2.5633,
+            "rank_mean": 2.8924,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "pick5_pts": {
+            "base_rate": NaN,
+            "baseline_rank": 49.8421,
+            "hindsight_best": 80.0,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 48.8421,
+            "xp_dist": 46.2632
+          },
+          "podium_brier": {
+            "base_rate": 0.1178,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.0873,
+            "rank_mean": NaN,
+            "rank_rate": 0.0883,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "podium_ll": {
+            "base_rate": 0.3983,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.2521,
+            "rank_mean": NaN,
+            "rank_rate": 0.2754,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_brier": {
+            "base_rate": 0.2479,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.1727,
+            "rank_mean": NaN,
+            "rank_rate": 0.1707,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_ll": {
+            "base_rate": 0.689,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.5409,
+            "rank_mean": NaN,
+            "rank_rate": 0.5193,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.6714,
+            "hindsight_best": NaN,
+            "model": 0.6161,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "xp_mae": {
+            "base_rate": NaN,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 7.2505,
+            "xp_dist": 7.3739
+          },
+          "xp_rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.6186,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 0.3935,
+            "xp_dist": 0.4745
+          }
+        },
+        "paired_ci": {
+          "points_ll: model - rank_rate": [
+            0.021668124208747745,
+            -0.04503240413491742,
+            0.09600896863060215
+          ],
+          "podium_ll: model - rank_rate": [
+            -0.023305883857357757,
+            -0.05082900637704567,
+            0.006192734270198114
+          ],
+          "points_brier: model - rank_rate": [
+            0.002008438509765942,
+            -0.01631908205906293,
+            0.022122650217520592
+          ],
+          "finish_mae: model - rank_mean": [
+            -0.329184978418778,
+            -0.46650186909567615,
+            -0.18504784516037287
+          ],
+          "rank_corr: model - baseline_rank": [
+            -0.055276531249071316,
+            -0.10823650034176353,
+            -0.014324348420458278
+          ],
+          "pick5_pts: xp_dist - baseline_rank": [
+            -3.5789473684210527,
+            -10.84342105263158,
+            3.526315789473684
+          ],
+          "pick5_pts: xp_dist - xp_current": [
+            -2.5789473684210527,
+            -7.526315789473684,
+            1.736842105263158
+          ],
+          "xp_rank_corr: xp_dist - xp_current": [
+            0.0809549574941485,
+            0.055308861113840806,
+            0.1093342331606389
+          ],
+          "xp_mae: xp_dist - xp_current": [
+            0.12346822007841875,
+            -0.042763862054009755,
+            0.29704559936462005
+          ]
+        }
+      }
+    },
+    "post_quali": {
+      "all": {
+        "races": 91,
+        "table": {
+          "finish_mae": {
+            "base_rate": NaN,
+            "baseline_rank": 2.8358,
+            "hindsight_best": NaN,
+            "model": 2.2813,
+            "rank_mean": 2.6487,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "pick5_pts": {
+            "base_rate": NaN,
+            "baseline_rank": 98.0879,
+            "hindsight_best": 121.8901,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 97.6484,
+            "xp_dist": 97.8022
+          },
+          "podium_brier": {
+            "base_rate": 0.1259,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.0755,
+            "rank_mean": NaN,
+            "rank_rate": 0.0677,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "podium_ll": {
+            "base_rate": 0.4187,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.2636,
+            "rank_mean": NaN,
+            "rank_rate": 0.2305,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_brier": {
+            "base_rate": 0.2496,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.1596,
+            "rank_mean": NaN,
+            "rank_rate": 0.1645,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_ll": {
+            "base_rate": 0.6924,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.5383,
+            "rank_mean": NaN,
+            "rank_rate": 0.5056,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.6563,
+            "hindsight_best": NaN,
+            "model": 0.6756,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "xp_mae": {
+            "base_rate": NaN,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 7.8862,
+            "xp_dist": 7.0003
+          },
+          "xp_rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.5232,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 0.6036,
+            "xp_dist": 0.619
+          }
+        },
+        "paired_ci": {
+          "points_ll: model - rank_rate": [
+            0.03267709117823343,
+            -0.010480943105798021,
+            0.0802959638454218
+          ],
+          "podium_ll: model - rank_rate": [
+            0.03317119941977154,
+            0.008460153330317067,
+            0.059858521863235314
+          ],
+          "points_brier: model - rank_rate": [
+            -0.004924483469434662,
+            -0.013673794291378785,
+            0.0043939841172617
+          ],
+          "finish_mae: model - rank_mean": [
+            -0.3673930571253862,
+            -0.46714836682074906,
+            -0.2723264662684437
+          ],
+          "rank_corr: model - baseline_rank": [
+            0.019316131182754263,
+            0.00015150861996235675,
+            0.04056380853536786
+          ],
+          "pick5_pts: xp_dist - baseline_rank": [
+            -0.2857142857142857,
+            -3.8024725274725273,
+            3.4065934065934065
+          ],
+          "pick5_pts: xp_dist - xp_current": [
+            0.15384615384615385,
+            -0.978021978021978,
+            1.2197802197802199
+          ],
+          "xp_rank_corr: xp_dist - xp_current": [
+            0.01541272786283302,
+            0.006178772127829291,
+            0.024704852481579654
+          ],
+          "xp_mae: xp_dist - xp_current": [
+            -0.8859238861322136,
+            -1.042737369571026,
+            -0.7269338425844976
+          ]
+        }
+      },
+      "2025-26": {
+        "races": 43,
+        "table": {
+          "finish_mae": {
+            "base_rate": NaN,
+            "baseline_rank": 2.8075,
+            "hindsight_best": NaN,
+            "model": 2.2714,
+            "rank_mean": 2.634,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "pick5_pts": {
+            "base_rate": NaN,
+            "baseline_rank": 100.9535,
+            "hindsight_best": 121.9535,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 97.8837,
+            "xp_dist": 98.0698
+          },
+          "podium_brier": {
+            "base_rate": 0.124,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.0662,
+            "rank_mean": NaN,
+            "rank_rate": 0.0616,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "podium_ll": {
+            "base_rate": 0.414,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.2386,
+            "rank_mean": NaN,
+            "rank_rate": 0.2101,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_brier": {
+            "base_rate": 0.2492,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.1755,
+            "rank_mean": NaN,
+            "rank_rate": 0.1649,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_ll": {
+            "base_rate": 0.6915,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.604,
+            "rank_mean": NaN,
+            "rank_rate": 0.5054,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.6544,
+            "hindsight_best": NaN,
+            "model": 0.6619,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "xp_mae": {
+            "base_rate": NaN,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 8.1463,
+            "xp_dist": 7.1823
+          },
+          "xp_rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.5237,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 0.5718,
+            "xp_dist": 0.5932
+          }
+        },
+        "paired_ci": {
+          "points_ll: model - rank_rate": [
+            0.09860562610719513,
+            0.032007169235211054,
+            0.17304178885126592
+          ],
+          "podium_ll: model - rank_rate": [
+            0.028440379402303238,
+            -0.005101344697371757,
+            0.06615990527557258
+          ],
+          "points_brier: model - rank_rate": [
+            0.010580139404732711,
+            -0.0011498145777358894,
+            0.022355574222661292
+          ],
+          "finish_mae: model - rank_mean": [
+            -0.36262831091580294,
+            -0.49896261058490293,
+            -0.2325895693352459
+          ],
+          "rank_corr: model - baseline_rank": [
+            0.0075799619464139815,
+            -0.015314973595400374,
+            0.03160761714470939
+          ],
+          "pick5_pts: xp_dist - baseline_rank": [
+            -2.883720930232558,
+            -7.511627906976744,
+            1.3255813953488371
+          ],
+          "pick5_pts: xp_dist - xp_current": [
+            0.18604651162790697,
+            -1.1627906976744187,
+            1.7209302325581395
+          ],
+          "xp_rank_corr: xp_dist - xp_current": [
+            0.021362894202760652,
+            0.008084098223486522,
+            0.03486267972320769
+          ],
+          "xp_mae: xp_dist - xp_current": [
+            -0.9639858870468195,
+            -1.1844001344759953,
+            -0.731203943517009
+          ]
+        }
+      },
+      "2026": {
+        "races": 19,
+        "table": {
+          "finish_mae": {
+            "base_rate": NaN,
+            "baseline_rank": 2.7397,
+            "hindsight_best": NaN,
+            "model": 2.1732,
+            "rank_mean": 2.6138,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "pick5_pts": {
+            "base_rate": NaN,
+            "baseline_rank": 94.2632,
+            "hindsight_best": 122.2105,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 92.6842,
+            "xp_dist": 92.7895
+          },
+          "podium_brier": {
+            "base_rate": 0.1191,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.0678,
+            "rank_mean": NaN,
+            "rank_rate": 0.0639,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "podium_ll": {
+            "base_rate": 0.4016,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.2174,
+            "rank_mean": NaN,
+            "rank_rate": 0.2102,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_brier": {
+            "base_rate": 0.2483,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.1749,
+            "rank_mean": NaN,
+            "rank_rate": 0.1662,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "points_ll": {
+            "base_rate": 0.6897,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": 0.6356,
+            "rank_mean": NaN,
+            "rank_rate": 0.5094,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.6604,
+            "hindsight_best": NaN,
+            "model": 0.6699,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": NaN,
+            "xp_dist": NaN
+          },
+          "xp_mae": {
+            "base_rate": NaN,
+            "baseline_rank": NaN,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 8.7301,
+            "xp_dist": 7.7672
+          },
+          "xp_rank_corr": {
+            "base_rate": NaN,
+            "baseline_rank": 0.5514,
+            "hindsight_best": NaN,
+            "model": NaN,
+            "rank_mean": NaN,
+            "rank_rate": NaN,
+            "xp_current": 0.5092,
+            "xp_dist": 0.5605
+          }
+        },
+        "paired_ci": {
+          "points_ll: model - rank_rate": [
+            0.12621517094842627,
+            0.018181355540394854,
+            0.25051267812080213
+          ],
+          "podium_ll: model - rank_rate": [
+            0.007196270736670643,
+            -0.022838926330676607,
+            0.04162700641372944
+          ],
+          "points_brier: model - rank_rate": [
+            0.008722413721305439,
+            -0.008112693070192056,
+            0.02416336099054503
+          ],
+          "finish_mae: model - rank_mean": [
+            -0.44065629146578433,
+            -0.6504778304712259,
+            -0.21922222166157568
+          ],
+          "rank_corr: model - baseline_rank": [
+            0.009477563265350802,
+            -0.024360522952899234,
+            0.045320448249811095
+          ],
+          "pick5_pts: xp_dist - baseline_rank": [
+            -1.4736842105263157,
+            -7.7368421052631575,
+            4.894736842105263
+          ],
+          "pick5_pts: xp_dist - xp_current": [
+            0.10526315789473684,
+            -0.21052631578947367,
+            0.42105263157894735
+          ],
+          "xp_rank_corr: xp_dist - xp_current": [
+            0.05130410836161768,
+            0.03304314707247498,
+            0.06924668304744491
+          ],
+          "xp_mae: xp_dist - xp_current": [
+            -0.9628903944441668,
+            -1.2727293801917512,
+            -0.6501647792061647
+          ]
+        }
+      }
+    }
+  }
+}

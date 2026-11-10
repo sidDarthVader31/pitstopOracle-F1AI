@@ -11,6 +11,8 @@ from typing import Literal
 
 WeekendMode = Literal["pre_quali", "post_quali", "post_sprint"]
 
+# First season of the current regulation era. The single definition: car ratings
+# reset, era DNF rates and same-era quali-gap imputation all read this.
 ERA_RESET_YEAR = 2026
 
 # Shared form / context features (no quali leakage for pre-quali).

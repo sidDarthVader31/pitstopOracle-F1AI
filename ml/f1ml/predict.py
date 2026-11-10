@@ -136,7 +136,8 @@ def list_calendar_races() -> pd.DataFrame:
 def _race_status_row(row: pd.Series) -> RaceMode:
     if int(row.get("has_winner", 0)) == 1:
         return "complete"
-    if bool(row.get("has_sprint_result", False)):
+    # post_sprint needs GP qualifying too (2024+ sprints run before it); see race_weekend._stage_for.
+    if bool(row.get("has_sprint_result", False)) and bool(row.get("has_quali", False)):
         return "post_sprint"
     season, rnd = int(row["season"]), int(row["round"])
     meta = grid_metadata(season, rnd)
@@ -150,13 +151,14 @@ def _race_status_row(row: pd.Series) -> RaceMode:
 def race_status(race_df: pd.DataFrame, season: int | None = None, round_num: int | None = None) -> RaceMode:
     if race_df["won"].max() == 1:
         return "complete"
-    if "sprint_position" in race_df and (race_df["sprint_position"] > 0).any():
+    has_quali = race_df["quali_position"].notna().any()
+    if has_quali and "sprint_position" in race_df and (race_df["sprint_position"] > 0).any():
         return "post_sprint"
     if season is not None and round_num is not None:
         meta = grid_metadata(season, round_num)
         if meta.get("has_grid"):
             return "grid_set"
-    if race_df["quali_position"].notna().any():
+    if has_quali:
         return "post_quali"
     return "pre_quali"
 

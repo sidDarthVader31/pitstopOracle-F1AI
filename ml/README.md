@@ -34,11 +34,18 @@ python race_weekend.py before --season 2026 --round 20   # after qualifying, bef
 python race_weekend.py after  --season 2026 --round 20   # once results are published
 ```
 
-`before` downloads the latest data, retrains on every completed race, picks how
-confident to be from the 10 most recent races, saves the models (previous copy goes to
-`models/archive/`), prints the forecast and saves it under `reports/forecasts/`.
-`after` scores that saved forecast against the real result and appends it to
-`reports/live_tracking.csv`, so you can see over time whether the model is improving.
+`before` downloads the latest data, retrains on every completed race, saves the models
+(previous copy goes to `models/archive/`), prints the forecast and saves it under
+`reports/forecasts/`. `after` scores that saved forecast against the real result,
+appends it to `reports/live_tracking.csv`, and adds it to the calibration history.
+
+Recipe since 2026-11-10 (EXP-005 + EXP-006, owner-approved): the pace model learns only
+from classified finishers (retirements are left to the DNF model), and how confident to
+be is fitted on **every earlier out-of-sample forecast** in
+`reports/oos_calibration_history.parquet`. That file is written by `run_pipeline.py`
+(the walk-forward) and extended by `race_weekend.py after`. Without it the run falls back
+to the last 10 races. The live run and the walk-forward share one function,
+`f1ml.train.train_stage_bundle`.
 
 Retraining the same recipe each weekend is automatic. Changing the recipe (inputs in
 `f1ml/specs.py`) needs a walk-forward experiment first — see `docs/experiments/`.

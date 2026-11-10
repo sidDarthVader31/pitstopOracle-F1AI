@@ -87,29 +87,59 @@ def driver_fantasy_points_row(
     return pts
 
 
-def expected_driver_fantasy_points(scored: pd.DataFrame) -> pd.Series:
-    """Expected fantasy points from model outputs on a scored race dataframe."""
+def _finish_distribution_columns(scored: pd.DataFrame) -> list[tuple[int, str]]:
+    cols = []
+    for c in scored.columns:
+        if c.startswith("finish_p") and c.endswith("_prob"):
+            pos = c[len("finish_p"):-len("_prob")]
+            if pos.isdigit():
+                cols.append((int(pos), c))
+    return sorted(cols)
+
+
+def _approx_finish_probs(ef: float, n: int) -> tuple[list[int], list[float]]:
+    """Legacy fallback when no simulated distribution is available.
+
+    Spreads weight 1/(1+|pos-expected|) over every position, which is far flatter
+    than the model's real distribution (EXP-007): a clear favourite keeps ~19% on
+    finishing outside the points.
+    """
+    positions = list(range(1, min(n + 1, 21)))
+    weights = [max(0.01, 1.0 / (1.0 + abs(pos - ef))) for pos in positions]
+    total = sum(weights)
+    return positions, [w / total for w in weights]
+
+
+def expected_driver_fantasy_points(scored: pd.DataFrame, *, use_distribution: bool = True) -> pd.Series:
+    """Expected fantasy points from model outputs on a scored race dataframe.
+
+    Uses the Monte Carlo finishing-position distribution (``finish_p{k}_prob``,
+    conditional on being classified) times ``1 - dnf_prob`` when it is present, so the
+    points reflect the same simulation as the win/podium/points probabilities. Falls
+    back to an approximation around ``expected_finish`` otherwise.
+    """
     exp_pts = pd.Series(0.0, index=scored.index)
     n = len(scored)
+    dist_cols = _finish_distribution_columns(scored) if use_distribution else []
     for idx, row in scored.iterrows():
         ef = float(row.get("expected_finish", n / 2))
         dnf_p = float(row.get("dnf_prob", 0.1))
         quali = row.get("quali_position")
         grid = row.get("grid")
         quali_i = int(quali) if pd.notna(quali) else None
-        grid_i = int(grid) if pd.notna(grid) else quali_i
+        grid_i = int(grid) if pd.notna(grid) and int(grid) > 0 else quali_i
         has_sprint = int(row.get("has_sprint", 0)) == 1
         sprint_pos = row.get("sprint_position")
         sprint_i = int(sprint_pos) if has_sprint and pd.notna(sprint_pos) and int(sprint_pos) > 0 else None
 
-        positions = list(range(1, min(n + 1, 21)))
-        weights = []
-        for pos in positions:
-            dist = abs(pos - ef)
-            w = max(0.01, 1.0 / (1.0 + dist))
-            weights.append(w)
-        total_w = sum(weights)
-        finish_probs = [w / total_w * (1.0 - dnf_p) for w in weights]
+        dist = [(pos, float(row[c])) for pos, c in dist_cols if pd.notna(row[c])]
+        if dist and sum(p for _, p in dist) > 0:
+            total = sum(p for _, p in dist)
+            positions = [pos for pos, _ in dist]
+            cond = [p / total for _, p in dist]
+        else:
+            positions, cond = _approx_finish_probs(ef, n)
+        finish_probs = [p * (1.0 - dnf_p) for p in cond]
 
         pts = 0.0
         for pos, fp in zip(positions, finish_probs):
