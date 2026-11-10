@@ -390,7 +390,7 @@ def cmd_after(season: int, round_num: int, skip_ingest: bool, dry_run: bool = Fa
         if f["payload"] is not None:
             from f1ml.fantasy import score_snapshot_fantasy
 
-            row.update(score_snapshot_fantasy(f["payload"], race))
+            row.update(score_snapshot_fantasy(f["payload"], race, table))
         rows.append(row)
         print(json.dumps(row, indent=2, default=str))
         if f["entry"] and not dry_run:

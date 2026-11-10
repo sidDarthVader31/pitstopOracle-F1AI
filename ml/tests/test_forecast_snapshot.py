@@ -94,3 +94,22 @@ def test_countdown_text():
     assert countdown_text(LOCK, now) == "1d 04h 12m"
     assert countdown_text(LOCK, LOCK) == "passed"
     assert countdown_text(None) == ""
+
+
+def test_app_can_reproduce_the_exact_fantasy_draws_from_a_snapshot():
+    from f1ml.fantasy import sim_from_snapshot, snapshot_fantasy
+
+    class Bundle:
+        temperature, mc_samples = 1.3, 1500
+
+    race, scored = _race_and_scored()
+    scored = scored.iloc[::-1].reset_index(drop=True)  # simulation order != win order
+    hook = lambda s: snapshot_fantasy(s, season=2026, round_num=21, bundle=Bundle())
+    p = build_snapshot_payload(race=race, scored=scored, stage="pre_quali", mode="pre_quali", model_version="v",
+                               model_info={"temperature": 1.3, "mc_samples": 1500},
+                               data_as_of="2026-11-08T00:00:00+00:00", weekend=WEEKEND, fantasy=hook)
+    p["mc_samples"] = 1500
+    sim = sim_from_snapshot(p).driver_summary().set_index("driver_id")
+    for d in p["drivers"]:
+        assert sim.loc[d["driver_id"], "expected"] == d["fantasy"]["expected"]
+    assert p["constructors"][0]["expected"] >= p["constructors"][-1]["expected"]

@@ -45,7 +45,11 @@ def compute_data_as_of(table: pd.DataFrame, race: pd.DataFrame, weekend: Weekend
     stamps: list[datetime] = []
     done = table[table.groupby(["season", "round"])["won"].transform("max") == 1]
     if not done.empty and "date" in done:
-        stamps.append(pd.Timestamp(done["date"].max()).tz_localize("UTC").to_pydatetime())
+        from f1ml.schedule import get_weekend
+
+        last = done.sort_values(["season", "round"]).iloc[-1]
+        wk = get_weekend(int(last["season"]), int(last["round"]))
+        stamps.append(wk.race_start if wk and wk.race_start else pd.Timestamp(done["date"].max()).tz_localize("UTC").to_pydatetime())
     if weekend is not None and race["quali_position"].notna().any() and weekend.quali_start:
         stamps.append(weekend.quali_start)
     if "grid_as_of" in race:
@@ -86,8 +90,11 @@ def build_snapshot_payload(
     fantasy_drivers = fantasy_out.get("drivers", {})
 
     drivers = []
+    scored = scored.reset_index(drop=True)
+    scored["sim_index"] = range(len(scored))  # order of the Monte Carlo columns (needed to reproduce draws)
     for _, row in scored.sort_values("win_prob", ascending=False).iterrows():
         rec = {k: row.get(k) for k in DRIVER_FIELDS if k in scored.columns}
+        rec["sim_index"] = int(row["sim_index"])
         for k in ("quali_position", "grid"):
             if k in rec and pd.notna(rec[k]):
                 rec[k] = int(rec[k])
