@@ -1,0 +1,11 @@
+# Streamlit settings for the public MVP (also read by Streamlit Community Cloud from the repo root).
+[client]
+toolbarMode = "viewer"      # hide developer menu items and the Deploy button
+showErrorDetails = false    # no stack traces to visitors
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#e10600"

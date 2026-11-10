@@ -147,6 +147,6 @@ def phase_chip(phase: str) -> None:
 
 def disclaimer_footer() -> None:
   st.markdown(
-    '<p class="disclaimer">Pitstop Oracle — ML forecasts for learning and fantasy. Not betting advice.</p>',
+    '<p class="disclaimer">Pitstop Oracle. Unofficial — not affiliated with Formula 1. Not betting advice.</p>',
     unsafe_allow_html=True,
   )

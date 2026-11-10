@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Pitstop Oracle — F1 weekend forecasts."""
+"""Pitstop Oracle: unofficial F1 forecast and fantasy helper (Streamlit MVP, MVP_SPEC §4).
+
+    python -m streamlit run app.py
+"""
 from __future__ import annotations
 
 import sys
@@ -10,41 +13,19 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from f1ml.predict import next_upcoming_race
-from f1ml.ui.theme import apply_theme, disclaimer_footer
+st.set_page_config(page_title="Pitstop Oracle", page_icon="🏁", layout="wide", initial_sidebar_state="expanded")
 
-st.set_page_config(
-  page_title="Pitstop Oracle",
-  page_icon="🏎️",
-  layout="wide",
-  initial_sidebar_state="expanded",
-)
-apply_theme()
+PAGES = {
+    "": [
+        st.Page("pages/home.py", title="This Weekend", icon="🏁", default=True),
+        st.Page("pages/fantasy_helper.py", title="Fantasy Helper (unofficial)", icon="🧮"),
+        st.Page("pages/track_record.py", title="Track Record", icon="📒"),
+        st.Page("pages/how_it_works.py", title="How it works & limits", icon="ℹ️"),
+    ],
+    "Explore": [
+        st.Page("pages/scenario_lab.py", title="Scenario Lab (hypothetical)", icon="🧪"),
+        st.Page("pages/race_explorer.py", title="Race Explorer", icon="🗂️"),
+    ],
+}
 
-season, round_num = next_upcoming_race()
-
-st.title("Pitstop Oracle")
-st.markdown(
-  f"""
-  **Race weekend intelligence** — win probabilities, grid penalties, fantasy optimizer,
-  and a public accuracy journal. Trained on 2022+ seasons.
-
-  **Next up:** season **{season}**, round **{round_num}** — open **This Weekend** for the full briefing.
-  """
-)
-
-st.markdown(
-  """
-  | Page | What you get |
-  |---|---|
-  | **This Weekend** | Model pick, grid penalties, markets, accuracy journal |
-  | **Fantasy Lab** | $100M team optimizer + what-if rain/penalties |
-  | **Race Explorer** | Archive any completed GP |
-  | **Model Performance** | Log-loss, Brier, calibration vs pole baseline |
-  """
-)
-
-st.sidebar.title("Pitstop Oracle")
-st.sidebar.caption("Navigate via the pages menu above.")
-st.sidebar.markdown("[Dataset schema](../docs/DATASET.md)")
-disclaimer_footer()
+st.navigation(PAGES).run()

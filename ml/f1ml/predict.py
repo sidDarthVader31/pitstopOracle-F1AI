@@ -11,7 +11,7 @@ import pandas as pd
 
 from f1ml.calendar import next_upcoming_race as calendar_next_upcoming_race
 from f1ml.features import attach_circuit_type_feature
-from f1ml.fantasy import constructor_fantasy_points, expected_driver_fantasy_points, oracle_xi
+from f1ml.fantasy import expected_driver_fantasy_points
 from f1ml.modeling import WeekendModels, apply_race_probs, feature_matrix, plackett_luce_win_probs, raw_win_scores
 from f1ml.ranking import WeekendRanker
 from f1ml.safety_car import add_upcoming_circuit_safety_features

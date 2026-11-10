@@ -250,3 +250,41 @@ def persist_forecast_snapshot(
     }
     (destination / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return destination
+
+
+# Temperature outside this range means the calibration fit has run away (EXP-005 saw 0.48).
+REFIT_TEMPERATURE_RANGE = (0.6, 6.0)
+REFIT_REQUIRED_MODES = ("pre_quali", "post_quali")
+
+
+def weekly_refit_checks(manifest: dict, race_date: str | None = None) -> list[str]:
+    """Checks a weekly retrain must pass before it may replace the live models.
+
+    The weekly retrain only adds the newest race to the *approved* recipe (owner decision
+    2026-11-10). Anything that looks like a recipe change, leakage or a degenerate fit is
+    refused here; such a bundle goes to ``models/candidates/`` and needs the full
+    ``promote_candidate`` evidence gate instead.
+    """
+    from f1ml.ranking import default_pace_train
+
+    problems: list[str] = []
+    modes = manifest.get("modes", {})
+    for mode in REFIT_REQUIRED_MODES:
+        info = modes.get(mode) or {}
+        if info.get("status") != "trained":
+            problems.append(f"{mode}: not trained ({info.get('reason', info.get('status'))})")
+            continue
+        expected_features = feature_columns(mode)[0]
+        if list(info.get("features") or []) != list(expected_features):
+            problems.append(f"{mode}: feature list differs from the approved recipe in specs.py")
+        if info.get("pace_train") != default_pace_train(mode):
+            problems.append(f"{mode}: pace_train={info.get('pace_train')!r}, approved is {default_pace_train(mode)!r}")
+        t = info.get("temperature")
+        lo, hi = REFIT_TEMPERATURE_RANGE
+        if t is None or not (lo <= float(t) <= hi):
+            problems.append(f"{mode}: temperature {t} outside the sane range {lo}–{hi}")
+        if race_date and info.get("trained_through") and str(info["trained_through"])[:10] >= str(race_date)[:10]:
+            problems.append(f"{mode}: trained through {info['trained_through']}, not strictly before the race ({race_date})")
+        if int(info.get("races", 0)) < 20:
+            problems.append(f"{mode}: only {info.get('races')} training races")
+    return problems

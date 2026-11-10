@@ -287,6 +287,43 @@ def plackett_luce_sample_order(
     return np.argsort(order, axis=1) + 1
 
 
+def simulate_race_draws(
+    scores: np.ndarray,
+    dnf_probs: np.ndarray | None = None,
+    temperature: float = 1.0,
+    n_samples: int = 6000,
+    seed: int = 42,
+) -> dict[str, np.ndarray]:
+    """The joint Monte Carlo race draws behind every published probability.
+
+    Returns ``retired`` (bool, samples x drivers), ``ranks`` (1..n classified order, 0 = DNF),
+    ``adj`` (temperature-scaled scores) and ``gumbel`` (the race noise). Fantasy points are
+    computed from these same draws (``f1ml.fantasy_sim``), so they match the win/podium
+    probabilities exactly for the same seed.
+    """
+    n = len(scores)
+    adj = np.asarray(scores, dtype=float) / max(temperature, 0.05)
+    rng = np.random.default_rng(seed)
+    risk = (
+        np.clip(np.asarray(dnf_probs, dtype=float), 0.0, 1.0)
+        if dnf_probs is not None
+        else np.zeros(n)
+    )
+    retired = rng.random((n_samples, n)) < risk[None, :]
+    all_retired = retired.all(axis=1) if n else np.zeros(n_samples, dtype=bool)
+    # A completed race has at least one classified driver. In the vanishingly
+    # rare all-retired draw, keep the lowest-risk driver classified.
+    if n and all_retired.any():
+        retired[all_retired, int(np.argmin(risk))] = False
+    gumbel = rng.gumbel(size=(n_samples, n))
+    perturbed = adj[None, :] + gumbel
+    perturbed[retired] = -np.inf
+    order = np.argsort(-perturbed, axis=1)
+    ranks = np.argsort(order, axis=1) + 1
+    ranks[retired] = 0
+    return {"retired": retired, "ranks": ranks, "adj": adj, "gumbel": gumbel}
+
+
 def market_probs_from_scores(
     scores: np.ndarray,
     dnf_probs: np.ndarray | None = None,
@@ -300,19 +337,8 @@ def market_probs_from_scores(
     win, podium, points and DNF probabilities are unconditional race outcomes.
     """
     n = len(scores)
-    adj = scores.astype(float) / max(temperature, 0.05)
-    rng = np.random.default_rng(seed)
-    risk = (
-        np.clip(np.asarray(dnf_probs, dtype=float), 0.0, 1.0)
-        if dnf_probs is not None
-        else np.zeros(n)
-    )
-    retired = rng.random((n_samples, n)) < risk[None, :]
-    all_retired = retired.all(axis=1) if n else np.zeros(n_samples, dtype=bool)
-    # A completed race has at least one classified driver. In the vanishingly
-    # rare all-retired draw, keep the lowest-risk driver classified.
-    if n and all_retired.any():
-        retired[all_retired, int(np.argmin(risk))] = False
+    draws = simulate_race_draws(scores, dnf_probs, temperature, n_samples, seed)
+    retired, ranks, adj = draws["retired"], draws["ranks"], draws["adj"]
 
     # Exact Plackett-Luce win probability given each retirement draw: softmax over
     # classified drivers. Averaging these is smooth and never exactly zero.
@@ -320,12 +346,6 @@ def market_probs_from_scores(
     logits = logits - logits.max(axis=1, keepdims=True)
     weights = np.exp(logits)
     win_prob = (weights / weights.sum(axis=1, keepdims=True)).mean(axis=0)
-
-    perturbed = adj[None, :] + rng.gumbel(size=(n_samples, n))
-    perturbed[retired] = -np.inf
-    order = np.argsort(-perturbed, axis=1)
-    ranks = np.argsort(order, axis=1) + 1
-    ranks[retired] = 0
 
     classified = ranks > 0
     classified_n = classified.sum(axis=0)
