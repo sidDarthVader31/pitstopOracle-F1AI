@@ -65,7 +65,7 @@
 
 | Mismatch | Eval | Live | Impact |
 |---|---|---|---|
-| Final fit | Fit on races before the last 10 pre-test races; those 10 are used only to fit the temperature (`ml/f1ml/train.py`, fold loop) | Calibrate on the last 10, then **refit on all** completed races and keep that temperature (`ml/race_weekend.py:67-76`) | Live models see 10 more races than the evaluated ones. Temperature is fitted on a model that is then replaced. Likely small, untested. |
+| Final fit | **Fixed 2026-11-10:** both call `train.train_stage_bundle` (train on all earlier races; temperature from earlier out-of-sample forecasts) | Same function | None for pre/post-quali. post_sprint still calibrates on a model that is then refit, in both paths. |
 | Monte Carlo samples | 1,200 per race (`ml/f1ml/train.py:132`); temperature fit uses 100 (`ml/f1ml/train.py:196`) | 6,000 (`ml/race_weekend.py:38`); temperature fit uses 300 | Win probabilities use the exact formula, so the impact is mainly on podium and points noise. |
 | Sprint-weekend stage | `post_sprint` evaluated only with qualifying known | **Fixed:** now also needs qualifying (item 4) | None remaining. |
 
@@ -157,3 +157,45 @@
 | "Expected finishing position is more accurate than grid/form" | **Yes** | EXP-007: CI excludes zero in every window |
 | "Calibrated chance of scoring points" | **No** | EXP-007 |
 | "Helps you pick a better Fantasy team" | **No** (same as top-5 by grid or form) | EXP-007 |
+
+### Update 2026-11-10: recipe adopted (owner decision)
+
+The owner approved the recommended recipe. Code changes:
+- `ranking.default_pace_train`: classified finishers for pre_quali and post_quali; post_sprint unchanged.
+- `train.train_stage_bundle`: the single recipe used by `race_weekend.train_weekend_bundle` and the walk-forward.
+- `reports/oos_calibration_history.parquet`: written by the walk-forward and extended by `race_weekend.py after`.
+- Tests: `ml/tests/test_adopted_recipe.py`, including "each fold calibrates only on earlier forecasts". `pytest ml/tests`: 74 passed, 1 skipped.
+
+Regenerated `ml/reports/EVAL.md` and `MARKET_BENCHMARK.md`:
+
+| | Before workstream D | Adopted |
+|---|---:|---:|
+| Post-quali log-loss, all 91 (grid 1.488) | 1.443 | **1.155** (−0.33 vs grid, CI −0.58 to −0.11) |
+| Post-quali, 2025–26 (grid 1.386) | 1.410 | **1.088** (−0.30, CI −0.71 to +0.01) |
+| Post-quali, 2026 (grid 1.617) | 1.637 | **1.192** |
+| Post-quali hit / Brier (all) | 47.3% / 0.033 | 60.4% / 0.028 (grid 0.031) |
+| Top bucket 50%+, 2025–26 (said / won) | 64% / 43% | **60% / 66%** (n=29) |
+| Pre-quali log-loss, all (prior form 2.403) | 1.803 | **1.670** |
+| Pre-quali top bucket, all | 72% / 64% | 69% / 59% (n=27). Small-sample 2025–26 favourites still over-confident. |
+| Post-sprint log-loss (12 races) | 1.369 | 1.524 (worse; the eval now refits like production) |
+| DNF ROC-AUC, all / 2026 | 0.55 / 0.51 | 0.58 / 0.63 |
+| Internal market benchmark, post-quali (market 1.172) | 1.485 | 1.250 (+0.08, CI −0.10 to +0.28; better in 25 of 50) |
+
+**Why it's better than the EXP-005/006 estimate (1.276).** The walk-forward used to hold out the 10 most recent races, the most heavily weighted ones, only to set the temperature. Now the temperature comes from earlier forecasts, so the model trains on those races too, exactly as the live run already did.
+
+**Updated G3 status:**
+
+| G3 condition | Status |
+|---|---|
+| No known leakage | **Pass.** Training and calibration use earlier races only (tested). |
+| Post-quali beats the grid on walk-forward | **Pass** over all 91 races (CI excludes zero). Better on average in 2025–26 and 2026; at those sample sizes the CI touches zero. |
+| Probabilities are calibrated | **Partial.** Post-quali winner: yes (within ±10 points in every window). Pre-quali favourites and points-finish probabilities: not yet (EXP-007 follow-up). |
+| Live shadow record published | **Open** (coordinator) |
+
+**Overall: G3 is close.** Open items: calibrate pre-quali favourites and points-finish probabilities; fix or retire the post-sprint stage; retrain the live models (the next `race_weekend.py before`); and the coordinator's live shadow record.
+
+| Claim | OK now? |
+|---|---|
+| "Beats the starting grid after qualifying" | **Yes**, over 91 out-of-sample races (state the sample) |
+| "Well-calibrated win chances after qualifying" | **Yes** (small buckets; keep checking live) |
+| "Sharper than the odds" | **No** (and not a product claim anyway) |

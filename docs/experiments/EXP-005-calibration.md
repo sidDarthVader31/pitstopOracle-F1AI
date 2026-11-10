@@ -4,6 +4,8 @@
 **Evaluation:** the same 91 walk-forward races as `ml/reports/EVAL.md` (2022 R21 to 2026 R19). 2025–26 (43 races) and 2026 (19 races) are shown separately. The internal market comparison uses the 50 races in EXP-004.
 **Branch:** `claude/ml-fixes-6f0fa2`. No model artifact was written or promoted.
 
+**Adopted 2026-11-10** (owner approval): the rolling temperature (not the grid blend) is now the live recipe, together with EXP-006. Regenerated `EVAL.md`: post-quali 1.155 over 91 races (grid 1.488). See `docs/ML_LAUNCH_READINESS.md`, "Update 2026-11-10".
+
 ## Plain-language summary
 
 The pace model ranks the drivers. A separate step, **calibration**, decides how *confident* the probabilities should be. When a forecast says "60%", that should happen about 6 times in 10. EXP-004 found the opposite for our strongest picks: post-quali favourites priced at 50%+ won only 39% of the time.

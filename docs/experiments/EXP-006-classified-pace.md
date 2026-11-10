@@ -4,6 +4,8 @@
 **Evaluation:** the same 91 walk-forward races as `ml/reports/EVAL.md`, with 2025–26 (43) and 2026 (19) shown separately, plus the internal market comparison on the 50 races in EXP-004. Calibration is today's 10-race temperature unless a row says otherwise.
 **Branch:** `claude/ml-fixes-6f0fa2`. No model artifact was written or promoted.
 
+**Adopted 2026-11-10** (owner approval): classified pace training is now the default for pre_quali and post_quali (post_sprint keeps all rows). See `docs/ML_LAUNCH_READINESS.md`, "Update 2026-11-10" for the regenerated `EVAL.md` numbers.
+
 ## Plain-language summary
 
 The model has two parts. The **pace model** learns "how fast is this car and driver, relative to the field". The **DNF model** then randomly retires cars in each simulated race, at their team's retirement rate.

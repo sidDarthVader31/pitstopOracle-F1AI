@@ -141,6 +141,14 @@ def race_sample_weights(df: pd.DataFrame, eval_year: int = 2026) -> np.ndarray:
     return df["season"].map(lambda s: sample_weight_for_row(int(s), eval_year)).values.astype(float)
 
 
+CLASSIFIED_PACE_MODES = ("pre_quali", "post_quali")
+
+
+def default_pace_train(mode: WeekendMode) -> str:
+    """Pace-model training rows per stage (EXP-006): classified finishers, except post_sprint."""
+    return "classified" if mode in CLASSIFIED_PACE_MODES else "all"
+
+
 def train_pairwise_ranker(
     train: pd.DataFrame,
     mode: WeekendMode,
@@ -157,9 +165,11 @@ def train_pairwise_ranker(
     w = race_sample_weights(rank_train, eval_year)
     # Retirees are listed at the back of the results. Learning "pace" from those
     # positions double-counts unreliability, which the DNF model already simulates
-    # (EXP-006). F1ML_PACE_TRAIN: "all" (default), "classified" drops retirements,
-    # "dnf_weight:<w>" keeps them with a reduced sample weight.
-    pace_train = os.environ.get("F1ML_PACE_TRAIN", "all")
+    # (EXP-006, adopted 2026-11-10). The default drops retirements for pre_quali and
+    # post_quali; post_sprint keeps them (EXP-006 found it worse on 12 races).
+    # F1ML_PACE_TRAIN overrides for every mode: "all", "classified", or
+    # "dnf_weight:<w>" (keep retirements with a reduced sample weight).
+    pace_train = os.environ.get("F1ML_PACE_TRAIN") or default_pace_train(mode)
     retired = pd.to_numeric(rank_train.get("dnf"), errors="coerce").fillna(0).to_numpy() == 1
     if pace_train == "classified" and (~retired).any():
         rank_train, w = rank_train[~retired], w[~retired]

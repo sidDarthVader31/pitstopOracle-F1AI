@@ -11,8 +11,10 @@ predictable races, e.g. early 2026), and that favourites were over-confident.
   (``eval.grid_probabilities``), in log space. Before qualifying there is no grid, so
   the blend leans toward an equal field instead.
 
-Nothing here is wired into the live weekend models yet; changing the approved model
-is the owner's call (see docs/experiments/EXP-005-calibration.md).
+Adopted 2026-11-10 (owner approval): the live weekend run and the walk-forward
+both use ``fit_rolling_temperature`` for pre_quali and post_quali, through
+``train.train_stage_bundle``. On the EXP-006 pace model the plain rolling
+temperature beat the grid blend, so the blend stays available but unused.
 """
 
 from __future__ import annotations
@@ -20,10 +22,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 
 T_GRID = np.geomspace(0.3, 10.0, 41)
 GRID_WEIGHTS = np.round(np.arange(0.0, 0.95, 0.05), 2)
 EPS = 1e-15
+MIN_HISTORY_RACES = 10  # fewer earlier out-of-sample races -> fall back to the 10-race temperature
+ROLLING_MODES = ("pre_quali", "post_quali")
+HISTORY_COLUMNS = ["season", "round", "stage", "driver_id", "pace_score", "dnf_prob", "won"]
 
 
 @dataclass
@@ -94,3 +100,38 @@ def fit_grid_blend(history: list[RaceInputs]) -> tuple[float, float]:
     if not history:
         return 1.0, 0.0
     return best_params(loss_table(history))
+
+
+def races_from_history(history: pd.DataFrame) -> list[RaceInputs]:
+    """Turn stored out-of-sample rows (``HISTORY_COLUMNS``) into per-race inputs."""
+    races = []
+    for (season, rnd), g in history.groupby(["season", "round"], sort=True):
+        won = g["won"].fillna(0).astype(int).to_numpy()
+        if won.sum() != 1:
+            continue
+        n = len(g)
+        retired = dnf_draws(g["dnf_prob"].to_numpy(float), int(season) * 100 + int(rnd))
+        races.append(RaceInputs(g["pace_score"].to_numpy(float), retired, np.full(n, 1.0 / n), won))
+    return races
+
+
+def fit_rolling_temperature(history: pd.DataFrame | None) -> float | None:
+    """Temperature with the lowest winner log-loss over every earlier out-of-sample race.
+
+    ``history`` must hold only races before the one being forecast, for one stage.
+    Returns None when there are fewer than ``MIN_HISTORY_RACES`` usable races.
+    """
+    if history is None or history.empty:
+        return None
+    races = races_from_history(history)
+    if len(races) < MIN_HISTORY_RACES:
+        return None
+    losses = np.array([[_race_ll(pl_win_probs(r.scores, r.retired, t), r.won) for r in races] for t in T_GRID])
+    return float(T_GRID[int(np.argmin(losses.mean(axis=1)))])
+
+
+def history_rows(scored: pd.DataFrame, stage: str) -> pd.DataFrame:
+    """The rows of a scored race to keep as calibration history (needs ``won``)."""
+    out = scored.reindex(columns=HISTORY_COLUMNS).copy()
+    out["stage"] = stage
+    return out

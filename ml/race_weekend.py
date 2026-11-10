@@ -29,21 +29,13 @@ from f1ml.features import build_driver_race
 from f1ml.lifecycle import persist_forecast_snapshot
 from f1ml.paths import MODELS, REPORTS
 from f1ml.predict import clear_prediction_caches
-from f1ml.ranking import WeekendRanker, predict_dnf_probs, predict_scores, train_dnf_model, train_pairwise_ranker
-from f1ml.specs import feature_columns
-from f1ml.train import _fit_plackett_luce_temperature, _in_keys, _load_training_frame, _race_keys
+from f1ml.ranking import WeekendRanker
+from f1ml.calibration import ROLLING_MODES, history_rows
+from f1ml.train import MODE_RULES, OOS_HISTORY_PATH, _load_training_frame, train_stage_bundle
 
 FORECASTS = REPORTS / "forecasts"
 TRACKING = REPORTS / "live_tracking.csv"
 PRODUCTION_MC_SAMPLES = 6000
-
-MODE_RULES = {
-    # mode: (row filter, calibration races, minimum races)
-    "pre_quali": (lambda df: df, 10, 20),
-    "post_quali": (lambda df: df[df["quali_position"].notna()], 10, 20),
-    "post_sprint": (lambda df: df[pd.to_numeric(df["sprint_position"], errors="coerce") > 0], 5, 15),
-}
-
 
 def _stage_for(race: pd.DataFrame) -> tuple[str, str]:
     """Return (model mode, snapshot stage) for the information currently available.
@@ -63,34 +55,43 @@ def _stage_for(race: pd.DataFrame) -> tuple[str, str]:
     return "pre_quali", "pre_quali"
 
 
-def train_weekend_bundle(history: pd.DataFrame, mode: str, season: int) -> tuple[WeekendRanker | None, dict]:
-    """Calibrate on the latest races, then refit on all completed races."""
-    pick, n_cal, n_min = MODE_RULES[mode]
-    eligible = pick(history).copy()
-    keys = _race_keys(eligible)
-    if len(keys) < n_min:
-        return None, {"status": "skipped", "reason": f"only {len(keys)} eligible races"}
-    cal_keys, fit_keys = keys[-n_cal:], keys[:-n_cal]
-    fit, cal = eligible[_in_keys(eligible, fit_keys)], eligible[_in_keys(eligible, cal_keys)]
+def load_oos_history(season: int, round_num: int, mode: str) -> pd.DataFrame | None:
+    """Earlier out-of-sample forecasts for one stage, strictly before (season, round)."""
+    if not OOS_HISTORY_PATH.exists():
+        return None
+    h = pd.read_parquet(OOS_HISTORY_PATH)
+    h = h[(h["stage"] == mode) & ((h["season"] * 100 + h["round"]) < season * 100 + round_num)]
+    return h if len(h) else None
 
-    # 1) How confident should probabilities be? Measured on races the model has not seen.
-    ranker = train_pairwise_ranker(fit, mode, eval_year=season)
-    dnf_model, dnf_features = train_dnf_model(fit, mode, eval_year=season)
-    temperature = _fit_plackett_luce_temperature(
-        cal, predict_scores(ranker, cal, mode), predict_dnf_probs(dnf_model, cal, dnf_features), samples=300
+
+def train_weekend_bundle(
+    history: pd.DataFrame, mode: str, season: int, round_num: int | None = None
+) -> tuple[WeekendRanker | None, dict]:
+    """Live bundle: the same ``train.train_stage_bundle`` recipe the walk-forward evaluates."""
+    oos = load_oos_history(season, round_num, mode) if round_num is not None and mode in ROLLING_MODES else None
+    if mode in ROLLING_MODES and oos is None:
+        print(f"[train] {mode}: no out-of-sample history in {OOS_HISTORY_PATH.name}; "
+              "falling back to the last-10-races temperature. Rebuild it with `python run_pipeline.py --skip-ingest`.")
+    return train_stage_bundle(history, mode, season, oos_history=oos, mc_samples=PRODUCTION_MC_SAMPLES)
+
+
+def append_oos_history(race: pd.DataFrame, forecast: pd.DataFrame, stage: str) -> int:
+    """Add a scored live forecast (made before the race) to the calibration history."""
+    mode = {"pre_quali": "pre_quali", "post_quali_pre_sprint": "post_quali"}.get(stage)
+    if mode is None or not {"pace_score", "dnf_prob"} <= set(forecast.columns):
+        return 0
+    rows = race[["season", "round", "driver_id", "won"]].merge(
+        forecast[["driver_id", "pace_score", "dnf_prob"]], on="driver_id", how="inner"
     )
-    # 2) Final model learns from every completed race, keeping that confidence setting.
-    ranker = train_pairwise_ranker(eligible, mode, eval_year=season)
-    dnf_model, dnf_features = train_dnf_model(eligible, mode, eval_year=season)
-    bundle = WeekendRanker(mode, ranker, dnf_model, dnf_features, temperature, PRODUCTION_MC_SAMPLES)
-    info = {
-        "status": "trained",
-        "races": len(keys),
-        "trained_through": str(eligible["date"].max()),
-        "temperature": temperature,
-        "features": feature_columns(mode)[0],
-    }
-    return bundle, info
+    if rows.empty or rows["won"].sum() != 1:
+        return 0
+    rows = history_rows(rows, mode)
+    if OOS_HISTORY_PATH.exists():
+        prev = pd.read_parquet(OOS_HISTORY_PATH)
+        same = (prev["stage"] == mode) & (prev["season"] == rows["season"].iloc[0]) & (prev["round"] == rows["round"].iloc[0])
+        rows = pd.concat([prev[~same], rows], ignore_index=True)
+    rows.sort_values(["stage", "season", "round", "driver_id"]).to_parquet(OOS_HISTORY_PATH, index=False)
+    return int(len(rows))
 
 
 def _archive_current_models(stamp: str) -> Path | None:
@@ -124,11 +125,12 @@ def train_and_save(season: int, round_num: int) -> tuple[dict, dict]:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     bundles, manifest = {}, {"season": season, "round": round_num, "created_at_utc": stamp, "modes": {}}
     for mode in MODE_RULES:
-        bundle, info = train_weekend_bundle(history, mode, season)
+        bundle, info = train_weekend_bundle(history, mode, season, round_num)
         manifest["modes"][mode] = info
         if bundle is not None:
             bundles[mode] = bundle
-        print(f"[train] {mode}: {info.get('status')} races={info.get('races', '-')} T={info.get('temperature', '-')}")
+        print(f"[train] {mode}: {info.get('status')} races={info.get('races', '-')} T={info.get('temperature', '-')} "
+              f"({info.get('temperature_source', '-')}) pace_train={info.get('pace_train', '-')}")
     archive = _archive_current_models(stamp)
     for mode, bundle in bundles.items():
         bundle.save(MODELS / mode)
@@ -199,6 +201,9 @@ def cmd_after(season: int, round_num: int, skip_ingest: bool) -> None:
     rows = []
     for path in forecasts:
         fc = pd.read_csv(path)
+        added = append_oos_history(race, fc, path.stem.split("_", 2)[-1])
+        if added:
+            print(f"Calibration history updated from {path.name} ({added} rows)")
         merged = race.merge(fc[["driver_id", "win_prob", "podium_prob", "expected_finish"]], on="driver_id", how="left")
         merged["win_prob"] = merged["win_prob"].fillna(0.0)
         merged = merged.set_index(pd.RangeIndex(len(merged)))
