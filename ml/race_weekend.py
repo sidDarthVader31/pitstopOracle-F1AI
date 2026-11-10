@@ -423,6 +423,7 @@ def main() -> None:
     p.add_argument("--season", type=int)
     p.add_argument("--round", type=int)
     p.add_argument("--skip-ingest", action="store_true", help="Use already-downloaded data")
+    p.add_argument("--ledger-dir", type=Path, help="Write to this ledger instead of ml/ledger (e.g. a demo)")
     p.add_argument("--dry-run", action="store_true",
                    help="Write snapshots to a temporary ledger; never touch live models, tracking or calibration files")
     a = p.parse_args()
@@ -431,7 +432,8 @@ def main() -> None:
     if a.season is None or a.round is None:
         p.error("--season and --round are required")
     cmds = {"before": cmd_before, "update": cmd_update, "after": cmd_after, "train": cmd_train}
-    cmds[a.command](a.season, a.round, a.skip_ingest, dry_run=a.dry_run)
+    kwargs = {"dry_run": a.dry_run} | ({"ledger_root": a.ledger_dir} if a.ledger_dir else {})
+    cmds[a.command](a.season, a.round, a.skip_ingest, **kwargs)
 
 
 if __name__ == "__main__":

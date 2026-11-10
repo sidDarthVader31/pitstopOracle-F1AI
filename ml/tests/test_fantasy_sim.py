@@ -146,3 +146,12 @@ def test_actual_points_use_rules_values():
     pts = actual_driver_points(race, RULES).set_index("driver_id")["actual_comparable"]
     assert pts["a"] == 25 + 8 + 2      # win, P3 quali, +2 places
     assert pts["b"] == 10 - 20         # pole, DNF
+
+
+def test_check_my_team_treats_current_team_value_as_affordable():
+    field = _field()
+    sim = simulate_fantasy(field, temperature=1.0, n_samples=1000, seed=7, rules=RULES)
+    # The best drivers cost far more than $100M together: still a valid starting point.
+    res = fantasy.check_my_team(sim, _priced(field), RULES, ["d0", "d1", "d2", "d3", "d4"], ["t1", "t2"], budget_m=100.0)
+    assert res["budget_raised_to_team_value"] and res["budget_m"] == res["current"]["cost_m"]
+    assert all(p["cost_m"] <= res["budget_m"] + 1e-9 for p in res["plans"])

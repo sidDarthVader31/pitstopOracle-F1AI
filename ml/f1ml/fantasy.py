@@ -311,6 +311,12 @@ def check_my_team(
     def boost_of(ds):
         return max(ds, key=lambda x: d_pts[x])
 
+    # Your current team is always affordable in the game (prices move after you buy), so the cap
+    # is at least what the team is worth now.
+    current_cost = cost(my_drivers, my_constructors)
+    budget_raised = current_cost > budget + 1e-9
+    budget = max(budget, current_cost)
+
     moves = [("driver", o, i) for o in my_drivers for i in d["id"] if i not in my_drivers]
     moves += [("constructor", o, i) for o in my_constructors for i in c["id"] if i not in my_constructors]
 
@@ -373,7 +379,7 @@ def check_my_team(
         })
     recommended = max(range(len(plans)), key=lambda i: (round(plans[i]["net_gain"], 6), -plans[i]["n_transfers"]))
     return {"current": plans[0], "plans": plans, "recommended": recommended, "budget_m": budget,
-            "free_transfers": free_transfers}
+            "budget_raised_to_team_value": budget_raised, "free_transfers": free_transfers}
 
 
 def snapshot_fantasy(scored: pd.DataFrame, *, season: int, round_num: int, bundle=None, race=None) -> dict:

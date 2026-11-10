@@ -13,7 +13,10 @@ import pandas as pd
 from f1ml.fantasy_rules import ScoringRules
 from f1ml.paths import MANUAL
 
-PRICES_PATH = MANUAL / "fantasy_prices.csv"
+import os
+from pathlib import Path
+
+PRICES_PATH = Path(os.environ.get("F1ML_PRICES_CSV", MANUAL / "fantasy_prices.csv"))
 COLUMNS = ["season", "round", "entity_type", "entity_id", "name", "cost_m"]
 
 

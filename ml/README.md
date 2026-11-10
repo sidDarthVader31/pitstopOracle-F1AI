@@ -88,14 +88,19 @@ python run_pipeline.py --all-data   # full rebuild from 2022
 
 After ingest, the pipeline prints a **weekend summary** line (`quali=… fp1/fp2/fp3=… grid=…`) so you can confirm Saturday data landed before opening the dashboard.
 
-## Dashboard pages
+## Dashboard pages (MVP, `st.navigation` in `app.py`)
 
-| Page | File |
-|---|---|
-| This Weekend | `pages/1_This_Weekend.py` |
-| Race Explorer | `pages/2_Race_Explorer.py` |
-| Fantasy Lab | `pages/3_Fantasy_Lab.py` |
-| Model Performance | `pages/4_Model_Performance.py` |
+| Page | File | Source |
+|---|---|---|
+| This Weekend (home) | `pages/home.py` | Latest ledger snapshot for the next race |
+| Fantasy Helper (unofficial) | `pages/fantasy_helper.py` | Snapshot fantasy block; prices CSV; Check my team re-creates the snapshot's simulated weekends |
+| Track Record | `pages/track_record.py` | Ledger snapshots + `ledger/scores.jsonl` only |
+| How it works & limits | `pages/how_it_works.py` | Static |
+| Scenario Lab (hypothetical) | `pages/scenario_lab.py` | Live model what-ifs; never saved |
+| Race Explorer | `pages/race_explorer.py` | Replays past races with today's model |
+
+Win/podium chances are shown as bands (`f1ml/ui/mvp.py`) until gate G3. Developer details: add `?dev=1`.
+`F1ML_LEDGER_DIR` and `F1ML_PRICES_CSV` point the app at another ledger/prices file (demos, staging).
 
 ## Outputs
 

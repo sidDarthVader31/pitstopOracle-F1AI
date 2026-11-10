@@ -33,7 +33,8 @@ from typing import Any, Iterable
 
 from f1ml.paths import ROOT
 
-LEDGER_ROOT = ROOT / "ledger"
+# F1ML_LEDGER_DIR lets ops (or a demo) point the app and the weekend runs at another ledger.
+LEDGER_ROOT = Path(os.environ.get("F1ML_LEDGER_DIR", ROOT / "ledger"))
 SCHEMA_VERSION = 1
 STAGES = ("pre_quali", "post_quali", "post_sprint")
 GENESIS = "0" * 64
