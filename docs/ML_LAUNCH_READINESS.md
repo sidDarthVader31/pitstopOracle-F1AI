@@ -199,3 +199,36 @@ Regenerated `ml/reports/EVAL.md` and `MARKET_BENCHMARK.md`:
 | "Beats the starting grid after qualifying" | **Yes**, over 91 out-of-sample races (state the sample) |
 | "Well-calibrated win chances after qualifying" | **Yes** (small buckets; keep checking live) |
 | "Sharper than the odds" | **No** (and not a product claim anyway) |
+
+## Workstream F: G3 model work (2026-11-14)
+
+**Branch:** `claude/g3-model-work`. These are experiments only: the live recipe and `ml/models/` are unchanged during the 2026 shadow races, and anything adopted goes in after 6 Dec with owner approval. The walk-forward was regenerated on data through 2026 R20 (92 races): post-quali log-loss 1.149 vs grid 1.482, pre-quali 1.677 vs prior form 2.406. `pytest ml/tests`: 129 passed, 1 skipped.
+
+| Open G3 item | Result | Evidence |
+|---|---|---|
+| Points-finish (top-10) calibration | **Fixed in the experiment; recommend.** The "ramp" sampler gives a softer midfield and leaves win chances unchanged. Post-quali points log-loss is 0.459 vs the grid-slot table 0.507 (2025–26: 0.480 vs 0.508; 2026: 0.461 vs 0.514), and every interval excludes zero. Buckets are within ~2 points. | [`EXP-008`](experiments/EXP-008-points-calibration.md) |
+| Pre-quali favourite over-confidence | **Partly explained, small fix optional.** Caused by 2022–23 races in the temperature fit. Recency weighting (half-life 12) helps by 0.01–0.024, inside the noise. | [`EXP-009`](experiments/EXP-009-prequali-favourites.md) |
+| Post-sprint stage regression | **Retire the stage.** The post-quali model is better on sprint weekends: 1.178 vs 1.524 (grid 1.266, 12 weekends). | [`EXP-010`](experiments/EXP-010-post-sprint-stage.md) |
+
+### G3 status after workstream F
+
+| G3 condition | Status |
+|---|---|
+| No known leakage | **Pass.** Every new calibrator is fitted on earlier races only (tested in `ml/tests/test_calibration.py`). |
+| Post-quali beats the grid on walk-forward | **Pass** (1.149 vs 1.482 over 92 races). |
+| Probabilities are calibrated | **Pass after qualifying once EXP-008 is wired in** (win: already; points: EXP-008). **Pre-quali: bands only** (win chances within ±10 points over all races, but recent favourites run a little hot). |
+| Live shadow record published | **In progress.** Las Vegas 22 Nov, Qatar 29 Nov, Abu Dhabi 6 Dec. |
+
+**To pass G3 by 2027-01-31:**
+1. Owner approves EXP-008 (and EXP-010; EXP-009 is optional).
+2. After 6 Dec, wire them in through `train_stage_bundle`: store points outcomes in `reports/oos_calibration_history.parquet`, use `sequential_pl_ranks` in `ranking.simulate_race_draws`, stop selecting `post_sprint`.
+3. Regenerate `EVAL.md` and check that EXP-008's numbers reproduce.
+4. Publish the three-race shadow record.
+
+### Claims after workstream F (once EXP-008 is wired in)
+
+| Claim | OK? |
+|---|---|
+| "Calibrated chance of scoring points after qualifying" | **Yes** (state the sample: 92 races) |
+| "Chance of scoring points before qualifying" | Bands only, no precise numbers |
+| "Helps you pick a better Fantasy team" | **Still no.** Not re-tested here; EXP-007 stands. |

@@ -135,3 +135,94 @@ def history_rows(scored: pd.DataFrame, stage: str) -> pd.DataFrame:
     out = scored.reindex(columns=HISTORY_COLUMNS).copy()
     out["stage"] = stage
     return out
+
+
+# ----------------------------------------------------------------------------- EXP-008
+# Points-finish calibration. One Plackett-Luce temperature is fitted to the *winner*,
+# which leaves the midfield order too predictable (EXP-007): drivers given <1% to score
+# points sometimes did. The sequential sampler below keeps the winner pick at the
+# fitted temperature (so win probabilities are unchanged) and draws every later
+# position with a softer temperature: ``temperature * rest_multiplier``.
+REST_MULTIPLIERS = np.array([1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0])
+
+
+def position_multipliers(n: int, rest_multiplier: float, schedule: str = "step") -> np.ndarray:
+    """Temperature multiplier for each finishing position 1..n.
+
+    ``step``: 1 for the winner, ``rest_multiplier`` for P2 onwards.
+    ``ramp``: rises linearly from 1 (P1) to ``rest_multiplier`` (P10), flat after.
+    """
+    k = np.arange(n, dtype=float)
+    if schedule == "step":
+        return np.where(k == 0, 1.0, float(rest_multiplier))
+    if schedule == "ramp":
+        return 1.0 + (float(rest_multiplier) - 1.0) * np.minimum(1.0, k / 9.0)
+    raise ValueError(f"unknown schedule {schedule!r}")
+
+
+def sequential_pl_ranks(
+    scores: np.ndarray,
+    retired: np.ndarray,
+    temperature: float,
+    rest_multiplier: float = 1.0,
+    *,
+    schedule: str = "step",
+    seed: int = 0,
+) -> np.ndarray:
+    """Sample classified finishing orders position by position (Plackett-Luce).
+
+    ``retired`` is a (draws, drivers) boolean array of DNF draws. Returns ranks with
+    the same shape: 1..k for classified drivers, 0 for retirements. With
+    ``rest_multiplier=1`` this is the ordinary Plackett-Luce model used in
+    ``ranking.simulate_race_draws``.
+    """
+    scores = np.asarray(scores, dtype=float)
+    draws, n = retired.shape
+    rng = np.random.default_rng(seed)
+    avail = ~retired.copy()
+    ranks = np.zeros((draws, n), dtype=int)
+    rows = np.arange(draws)
+    mults = position_multipliers(n, rest_multiplier, schedule)
+    for k in range(n):
+        live = avail.any(axis=1)
+        if not live.any():
+            break
+        t = max(float(temperature) * float(mults[k]), 0.05)
+        logits = scores[None, :] / t + rng.gumbel(size=(draws, n))
+        logits[~avail] = -np.inf
+        pick = np.argmax(logits, axis=1)
+        r, p = rows[live], pick[live]
+        ranks[r, p] = k + 1
+        avail[r, p] = False
+    return ranks
+
+
+def outcome_probs_from_ranks(ranks: np.ndarray) -> dict[str, np.ndarray]:
+    """Unconditional podium / points-finish probabilities and conditional expected finish."""
+    classified = ranks > 0
+    n_cls = classified.sum(axis=0)
+    return {
+        "podium_prob": ((ranks >= 1) & (ranks <= 3)).mean(axis=0),
+        "points_prob": ((ranks >= 1) & (ranks <= 10)).mean(axis=0),
+        "expected_finish": np.divide(
+            np.where(classified, ranks, 0).sum(axis=0), n_cls,
+            out=np.full(ranks.shape[1], np.nan), where=n_cls > 0,
+        ),
+    }
+
+
+def binary_log_loss(p: np.ndarray, y: np.ndarray, eps: float = 1e-6) -> float:
+    p = np.clip(np.asarray(p, dtype=float), eps, 1 - eps)
+    y = np.asarray(y, dtype=float)
+    return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
+
+
+def fit_rest_multiplier(per_race_losses: np.ndarray, min_races: int = MIN_HISTORY_RACES) -> float | None:
+    """Pick the multiplier with the lowest mean points log-loss over earlier races.
+
+    ``per_race_losses``: shape (len(REST_MULTIPLIERS), races), earlier races only.
+    Returns None with fewer than ``min_races`` races (keep the multiplier at 1).
+    """
+    if per_race_losses.ndim != 2 or per_race_losses.shape[1] < min_races:
+        return None
+    return float(REST_MULTIPLIERS[int(np.argmin(per_race_losses.mean(axis=1)))])
