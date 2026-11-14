@@ -1,6 +1,6 @@
 # EXP-009: Pre-qualifying favourites
 
-**Status:** done. **Decision: small optional improvement.** A recency-weighted temperature for pre-quali only (half-life 12 races) helps a little in every window, but the gain is within the noise. Keep the MVP rule that pre-quali chances show as bands, with no band above 50%. Owner's call; if adopted, after 6 Dec.
+**Status:** done. **Decision: small optional improvement.** A recency-weighted temperature for pre-quali only (half-life 12 races) helps a little in every window, but the gain is within the noise. Keep the MVP rule that pre-quali chances show as bands, with no band above 50%. Owner decision 2026-11-14: not adopted.
 **Evaluation:** the same 92-race walk-forward as EXP-008 (adopted recipe). Baseline: the prior-form forecast. The internal market check (Polymarket before the weekend, 48 races) is a benchmark only, never a model input.
 **Branch:** `claude/g3-model-work`. No model artifact written or promoted.
 

@@ -220,7 +220,7 @@ Regenerated `ml/reports/EVAL.md` and `MARKET_BENCHMARK.md`:
 | Live shadow record published | **In progress.** Las Vegas 22 Nov, Qatar 29 Nov, Abu Dhabi 6 Dec. |
 
 **To pass G3 by 2027-01-31:**
-1. Owner approves EXP-008 (and EXP-010; EXP-009 is optional).
+1. ~~Owner approves EXP-008 and EXP-010~~ Done 2026-11-14. EXP-009 not adopted.
 2. After 6 Dec, wire them in through `train_stage_bundle`: store points outcomes in `reports/oos_calibration_history.parquet`, use `sequential_pl_ranks` in `ranking.simulate_race_draws`, stop selecting `post_sprint`.
 3. Regenerate `EVAL.md` and check that EXP-008's numbers reproduce.
 4. Publish the three-race shadow record.

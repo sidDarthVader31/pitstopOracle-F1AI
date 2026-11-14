@@ -1,6 +1,6 @@
 # EXP-010: The post-sprint stage
 
-**Status:** done. **Decision: retire the post-sprint stage.** On sprint weekends, once GP qualifying is known, use the adopted post-quali model. Owner approval needed. No sprint weekend remains in 2026, so the shadow races aren't affected either way; the change can go in before the 2027 season.
+**Status:** done. **Decision: retire the post-sprint stage (approved by the owner 2026-11-14; wire in after 6 Dec).** On sprint weekends, once GP qualifying is known, use the adopted post-quali model. Owner approval needed. No sprint weekend remains in 2026, so the shadow races aren't affected either way; the change can go in before the 2027 season.
 **Evaluation:** every sprint weekend in the walk-forward where the post-sprint stage can be trained: 12 weekends, 2025 R2 to 2026 R17 (6 in 2026). Same folds as `ml/reports/EVAL.md`. All variants are scored on the same drivers.
 **Branch:** `claude/g3-model-work`. No model artifact written or promoted.
 

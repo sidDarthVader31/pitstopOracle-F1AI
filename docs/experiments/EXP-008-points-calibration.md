@@ -1,6 +1,6 @@
 # EXP-008: Calibrate the chance of finishing in the points
 
-**Status:** done. **Decision: recommend** the "ramp" sampler (a softer midfield) for pre-quali and post-quali. Owner approval needed. It goes live **after** the 2026 shadow races (Abu Dhabi, 6 Dec); until then the live recipe stays frozen.
+**Status:** done. **Decision: adopted by the owner 2026-11-14** (wire in after 6 Dec): the "ramp" sampler (a softer midfield) for pre-quali and post-quali. Owner approval needed. It goes live **after** the 2026 shadow races (Abu Dhabi, 6 Dec); until then the live recipe stays frozen.
 **Evaluation:** the walk-forward from `scripts/wf_dump.py adopted`: the adopted recipe (EXP-005 + EXP-006), 92 races from 2022 R21 to 2026 R20, the same folds as `ml/reports/EVAL.md`. 2025–26 (44 races) and 2026 (20 races) are shown separately.
 **Branch:** `claude/g3-model-work`. No model artifact written or promoted; `ml/models/` untouched.
 
