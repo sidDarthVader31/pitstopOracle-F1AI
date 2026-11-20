@@ -25,19 +25,37 @@ pip install -r requirements.txt
 | `python -m streamlit run app.py` | Launch dashboard with the venv's Python (avoids version clashes with a global/Anaconda streamlit) |
 | `python predict_race.py` | CLI weekend card for the next GP on the calendar |
 | `python scripts/generate_docs_assets.py` | Regenerate README screenshot PNGs |
+| `python scripts/market_benchmark.py all` | Model vs betting market (Polymarket) on the same races; writes `reports/MARKET_BENCHMARK.md` (EXP-004). `report` re-scores from cache |
 
 ## Race-weekend loop (retrain every race)
 
 ```bash
-python race_weekend.py before --season 2026 --round 20   # after qualifying, before the race
-python race_weekend.py after  --season 2026 --round 20   # once results are published
+python race_weekend.py before --season 2026 --round 21   # Thu/Fri, >= 1 h before the team lock
+python race_weekend.py update --season 2026 --round 21   # after qualifying / official grid
+python race_weekend.py after  --season 2026 --round 21   # once results are published
+python race_weekend.py verify                            # ledger integrity check
 ```
 
-`before` downloads the latest data, retrains on every completed race, picks how
-confident to be from the 10 most recent races, saves the models (previous copy goes to
-`models/archive/`), prints the forecast and saves it under `reports/forecasts/`.
-`after` scores that saved forecast against the real result and appends it to
-`reports/live_tracking.csv`, so you can see over time whether the model is improving.
+`before` downloads the latest data, retrains on every completed race, and replaces the live
+models (previous copy to `models/archive/`) only if `lifecycle.weekly_refit_checks` passes;
+otherwise the retrain goes to `models/candidates/`. It then freezes a forecast snapshot in
+the **ledger** (`ledger/`: content-hashed, append-only, hash-chained index; never
+overwritten). `update` freezes another snapshot after qualifying without retraining. `after`
+scores every snapshot of the race (including fantasy points), appends to
+`ledger/scores.jsonl` and `reports/live_tracking.csv`, and adds the race to the calibration
+history. `--dry-run` writes to a temporary ledger and touches nothing else. Exact times per
+weekend: [`docs/RUNBOOK_RACE_WEEKEND.md`](../docs/RUNBOOK_RACE_WEEKEND.md).
+
+Fantasy: scoring rules in `data/manual/fantasy_rules_<season>.toml`; prices entered weekly in
+`data/manual/fantasy_prices.csv` and checked with `python scripts/check_prices.py`.
+
+Recipe since 2026-11-10 (EXP-005 + EXP-006, owner-approved): the pace model learns only
+from classified finishers (retirements are left to the DNF model), and how confident to
+be is fitted on **every earlier out-of-sample forecast** in
+`reports/oos_calibration_history.parquet`. That file is written by `run_pipeline.py`
+(the walk-forward) and extended by `race_weekend.py after`. Without it the run falls back
+to the last 10 races. The live run and the walk-forward share one function,
+`f1ml.train.train_stage_bundle`.
 
 Retraining the same recipe each weekend is automatic. Changing the recipe (inputs in
 `f1ml/specs.py`) needs a walk-forward experiment first — see `docs/experiments/`.
@@ -70,14 +88,19 @@ python run_pipeline.py --all-data   # full rebuild from 2022
 
 After ingest, the pipeline prints a **weekend summary** line (`quali=… fp1/fp2/fp3=… grid=…`) so you can confirm Saturday data landed before opening the dashboard.
 
-## Dashboard pages
+## Dashboard pages (MVP, `st.navigation` in `app.py`)
 
-| Page | File |
-|---|---|
-| This Weekend | `pages/1_This_Weekend.py` |
-| Race Explorer | `pages/2_Race_Explorer.py` |
-| Fantasy Lab | `pages/3_Fantasy_Lab.py` |
-| Model Performance | `pages/4_Model_Performance.py` |
+| Page | File | Source |
+|---|---|---|
+| This Weekend (home) | `pages/home.py` | Latest ledger snapshot for the next race |
+| Fantasy Helper (unofficial) | `pages/fantasy_helper.py` | Snapshot fantasy block; prices CSV; Check my team re-creates the snapshot's simulated weekends |
+| Track Record | `pages/track_record.py` | Ledger snapshots + `ledger/scores.jsonl` only |
+| How it works & limits | `pages/how_it_works.py` | Static |
+| Scenario Lab (hypothetical) | `pages/scenario_lab.py` | Live model what-ifs; never saved |
+| Race Explorer | `pages/race_explorer.py` | Replays past races with today's model |
+
+Win/podium chances are shown as bands (`f1ml/ui/mvp.py`) until gate G3. Developer details: add `?dev=1`.
+`F1ML_LEDGER_DIR` and `F1ML_PRICES_CSV` point the app at another ledger/prices file (demos, staging).
 
 ## Outputs
 

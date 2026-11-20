@@ -51,47 +51,35 @@ def _driver_label(row: pd.Series) -> str:
   return f"{row['given_name']} {row['family_name']}"
 
 
+OOS_2026_LABEL = "2026 out-of-sample"
+
+
 def _eval_split(metrics: dict, mode: str) -> dict:
-  """Prefer walk-forward OOS metrics; fall back to legacy test_* keys."""
-  test = metrics.get(f"test_{mode}", {})
+  """2026 walk-forward (out-of-sample) metrics as ``oos2026_{mode}_*`` keys.
+
+  Prefers the ``oos`` summary, then the ``oos2026_{mode}`` block, then the legacy
+  ``test_{mode}`` block that older metrics.json files still carry.
+  """
+  prefix = f"oos2026_{mode}"
+  legacy = {
+    k.replace(f"test_{mode}", prefix, 1): v for k, v in metrics.get(f"test_{mode}", {}).items()
+  }
+  split = {**legacy, **metrics.get(prefix, {})}
   oos = metrics.get("oos", {})
-  if mode == "pre_quali":
-    if oos.get("oos_n_races", 0) or test.get(f"test_{mode}_hit"):
-      return {
-        f"test_{mode}_hit": oos.get("oos_pre_hit", test.get(f"test_{mode}_hit", 0)),
-        f"test_{mode}_log_loss": oos.get(
-          "oos_pre_log_loss", test.get(f"test_{mode}_log_loss", 0)
-        ),
-        **{k: v for k, v in test.items() if k not in (f"test_{mode}_hit", f"test_{mode}_log_loss")},
-      }
-  else:
-    if oos.get("oos_post_n_races", 0) or test.get(f"test_{mode}_hit"):
-      return {
-        f"test_{mode}_hit": oos.get("oos_post_hit", test.get(f"test_{mode}_hit", 0)),
-        f"test_{mode}_log_loss": oos.get(
-          "oos_post_log_loss", test.get(f"test_{mode}_log_loss", 0)
-        ),
-        f"test_{mode}_quali_gap_log_loss": oos.get(
-          "oos_post_quali_gap_log_loss",
-          test.get(f"test_{mode}_quali_gap_log_loss", 0),
-        ),
-        **{
-          k: v
-          for k, v in test.items()
-          if k
-          not in (
-            f"test_{mode}_hit",
-            f"test_{mode}_log_loss",
-            f"test_{mode}_quali_gap_log_loss",
-          )
-        },
-      }
-  return test
+  stage = "pre" if mode == "pre_quali" else "post"
+  if oos.get(f"oos_{stage}_n_races", 0) or oos.get("oos_n_races", 0):
+    split[f"{prefix}_hit"] = oos.get(f"oos_{stage}_hit", split.get(f"{prefix}_hit", 0))
+    split[f"{prefix}_log_loss"] = oos.get(f"oos_{stage}_log_loss", split.get(f"{prefix}_log_loss", 0))
+    if stage == "post":
+      split[f"{prefix}_quali_gap_log_loss"] = oos.get(
+        "oos_post_quali_gap_log_loss", split.get(f"{prefix}_quali_gap_log_loss", 0)
+      )
+  return split
 
 
 def _oos_label(metrics: dict) -> str:
   n = metrics.get("oos", {}).get("oos_n_races", 0)
-  return f"Walk-forward 2026 ({n} races)" if n else "Test"
+  return f"{OOS_2026_LABEL} ({n} races)" if n else OOS_2026_LABEL
 
 
 def win_prob_bar(scored: pd.DataFrame, top_n: int = 10) -> go.Figure:
@@ -179,9 +167,9 @@ def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
   if mode == "pre_quali":
     labels = ["Oracle", "Equal field", "Champ leader"]
     test = [
-      split.get(f"test_{mode}_hit", 0) * 100,
-      split.get(f"test_{mode}_equal_hit", 0) * 100,
-      split.get(f"test_{mode}_champ_hit", 0) * 100,
+      split.get(f"oos2026_{mode}_hit", 0) * 100,
+      split.get(f"oos2026_{mode}_equal_hit", 0) * 100,
+      split.get(f"oos2026_{mode}_champ_hit", 0) * 100,
     ]
     train_split = metrics.get(f"train_{mode}", {})
     train = [
@@ -192,9 +180,9 @@ def accuracy_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
   else:
     labels = ["Oracle", "Pole", "Champ leader"]
     test = [
-      split.get(f"test_{mode}_hit", 0) * 100,
-      split.get(f"test_{mode}_pole_hit", 0) * 100,
-      split.get(f"test_{mode}_champ_hit", 0) * 100,
+      split.get(f"oos2026_{mode}_hit", 0) * 100,
+      split.get(f"oos2026_{mode}_pole_hit", 0) * 100,
+      split.get(f"oos2026_{mode}_champ_hit", 0) * 100,
     ]
     train_split = metrics.get(f"train_{mode}", {})
     train = [
@@ -222,16 +210,16 @@ def log_loss_bars(metrics: dict, mode: str = "post_quali") -> go.Figure:
   if mode == "pre_quali":
     labels = ["Oracle", "Equal field", "Champ leader"]
     values = [
-      split.get(f"test_{mode}_log_loss", 0),
-      split.get(f"test_{mode}_equal_log_loss", 0),
-      split.get(f"test_{mode}_champ_log_loss", 0),
+      split.get(f"oos2026_{mode}_log_loss", 0),
+      split.get(f"oos2026_{mode}_equal_log_loss", 0),
+      split.get(f"oos2026_{mode}_champ_log_loss", 0),
     ]
   else:
     labels = ["Oracle", "Quali-gap", "Pole"]
     values = [
-      split.get(f"test_{mode}_log_loss", 0),
-      split.get(f"test_{mode}_quali_gap_log_loss", 0),
-      split.get(f"test_{mode}_pole_log_loss", 0),
+      split.get(f"oos2026_{mode}_log_loss", 0),
+      split.get(f"oos2026_{mode}_quali_gap_log_loss", 0),
+      split.get(f"oos2026_{mode}_pole_log_loss", 0),
     ]
   fig = go.Figure(go.Bar(x=labels, y=values, marker_color="#3671C6"))
   fig.update_layout(

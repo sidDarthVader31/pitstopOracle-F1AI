@@ -30,15 +30,17 @@ from f1ml.eval import (
     winner_hit_rate_probs,
 )
 from f1ml.paths import MODELS, PROCESSED, REPORTS
+from f1ml.calibration import HISTORY_COLUMNS, ROLLING_MODES, fit_rolling_temperature, history_rows
 from f1ml.ranking import (
     WeekendRanker,
+    default_pace_train,
     predict_dnf_probs,
     predict_scores,
     train_dnf_model,
     train_pairwise_ranker,
     market_probs_from_scores,
 )
-from f1ml.specs import ERA_RESET_YEAR, EVAL_YEAR, WeekendMode
+from f1ml.specs import ERA_RESET_YEAR, EVAL_YEAR, WeekendMode, feature_columns
 
 
 def _load_training_frame() -> pd.DataFrame:
@@ -46,6 +48,20 @@ def _load_training_frame() -> pd.DataFrame:
     has_winner = df.groupby(["season", "round"])["won"].transform("max") == 1
     df = df[has_winner & df["dnf"].notna()].copy()
     return df
+
+
+def _load_eval_field() -> pd.DataFrame:
+    """Every entrant of every completed race, as the field looked before lights out.
+
+    Training drops rows with no DNF label (did not start, disqualified, withdrew), but
+    a forecast cannot know about those in advance: a driver disqualified after the race
+    was a real contender at the cutoff. Scoring only the remaining drivers hands their
+    probability to the rest of the field using hindsight, so test races use this frame.
+    """
+    df = pd.read_parquet(PROCESSED / "driver_race.parquet")
+    has_winner = df.groupby(["season", "round"])["won"].transform("max") == 1
+    upcoming = df["is_upcoming"].fillna(0).astype(int) == 1 if "is_upcoming" in df else False
+    return df[has_winner & ~upcoming].copy()
 
 
 def _race_keys(df: pd.DataFrame) -> list[tuple[int, int]]:
@@ -59,8 +75,15 @@ def _in_keys(df: pd.DataFrame, keys) -> pd.Series:
     return codes.isin(wanted)
 
 
-def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[dict]:
-    """Expanding-window folds for all seasons or one requested season."""
+def _walk_forward_folds(
+    df: pd.DataFrame, eval_year: int | None = None, test_field: pd.DataFrame | None = None
+) -> list[dict]:
+    """Expanding-window folds for all seasons or one requested season.
+
+    ``test_field`` (optional) supplies the test race's rows, e.g. the full entry list
+    from ``_load_eval_field``; training rows always come from ``df``.
+    """
+    source = df if test_field is None else test_field
     all_keys = _race_keys(df)
     keys = [key for key in all_keys if eval_year is None or key[0] == eval_year]
     folds = []
@@ -69,11 +92,11 @@ def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[
         if not prior:
             continue
         train_mask = _in_keys(df, prior)
-        test_mask = (df["season"] == test_key[0]) & (df["round"] == test_key[1])
+        test_mask = (source["season"] == test_key[0]) & (source["round"] == test_key[1])
         folds.append(
             {
                 "train": df[train_mask].copy(),
-                "test": df[test_mask].copy(),
+                "test": source[test_mask].copy(),
                 "test_season": int(test_key[0]),
                 "test_round": int(test_key[1]),
                 "eval_year": test_key[0],
@@ -84,6 +107,67 @@ def _walk_forward_folds(df: pd.DataFrame, eval_year: int | None = None) -> list[
 
 def _walk_forward_2026(df: pd.DataFrame) -> list[dict]:
     return _walk_forward_folds(df, eval_year=EVAL_YEAR)
+
+
+MODE_RULES = {
+    # mode: (eligible rows, races for the fallback temperature, minimum races to train)
+    "pre_quali": (lambda df: df, 10, 20),
+    "post_quali": (lambda df: df[df["quali_position"].notna()], 10, 20),
+    "post_sprint": (lambda df: df[pd.to_numeric(df["sprint_position"], errors="coerce") > 0], 5, 15),
+}
+
+
+def train_stage_bundle(
+    history: pd.DataFrame,
+    mode: WeekendMode,
+    eval_year: int,
+    *,
+    oos_history: pd.DataFrame | None = None,
+    mc_samples: int = 6000,
+) -> tuple[WeekendRanker | None, dict]:
+    """The one recipe for a stage bundle, shared by the live weekend run and the walk-forward.
+
+    ``history``: completed races before the forecast. ``oos_history``: earlier
+    out-of-sample forecasts for this stage (``calibration.HISTORY_COLUMNS``), also
+    only races before the forecast.
+
+    - Pace + DNF models are trained on every eligible race in ``history``.
+    - Temperature (pre_quali / post_quali, EXP-005): fitted on ``oos_history`` when it
+      holds at least ``calibration.MIN_HISTORY_RACES`` races. Otherwise (and always
+      for post_sprint) the older fallback: fit on all but the last ``n_cal`` eligible
+      races, pick the temperature on those ``n_cal`` races, then refit on everything.
+    """
+    pick, n_cal, n_min = MODE_RULES[mode]
+    eligible = pick(history).copy()
+    keys = _race_keys(eligible)
+    if len(keys) < n_min:
+        return None, {"status": "skipped", "reason": f"only {len(keys)} eligible races"}
+    temperature = fit_rolling_temperature(oos_history) if mode in ROLLING_MODES else None
+    source = "rolling_oos"
+    if temperature is None:
+        source = f"last_{n_cal}_races"
+        fit = eligible[_in_keys(eligible, keys[:-n_cal])]
+        cal = eligible[_in_keys(eligible, keys[-n_cal:])]
+        ranker = train_pairwise_ranker(fit, mode, eval_year=eval_year)
+        dnf_model, dnf_features = train_dnf_model(fit, mode, eval_year=eval_year)
+        temperature = _fit_plackett_luce_temperature(
+            cal, predict_scores(ranker, cal, mode), predict_dnf_probs(dnf_model, cal, dnf_features), samples=300
+        )
+    ranker = train_pairwise_ranker(eligible, mode, eval_year=eval_year)
+    dnf_model, dnf_features = train_dnf_model(eligible, mode, eval_year=eval_year)
+    bundle = WeekendRanker(mode, ranker, dnf_model, dnf_features, temperature, mc_samples)
+    oos_races = 0 if oos_history is None or oos_history.empty else int(oos_history.groupby(["season", "round"]).ngroups)
+    info = {
+        "status": "trained",
+        "races": len(keys),
+        "trained_through": str(eligible["date"].max()) if "date" in eligible else None,
+        "temperature": temperature,
+        "temperature_source": source,
+        "oos_history_races": oos_races,
+        "pace_train": os.environ.get("F1ML_PACE_TRAIN") or default_pace_train(mode),
+        "features": feature_columns(mode)[0],
+    }
+    return bundle, info
 
 
 def _train_mode_bundle(
@@ -404,10 +488,60 @@ def _write_eval_md(metrics: dict) -> None:
     (REPORTS / "EVAL.md").write_text("\n".join(lines))
 
 
-def train_and_eval() -> dict:
-    df = _load_training_frame()
-    eda = _eda(df)
+PREDICTION_COLUMNS = [
+    "season", "round", "driver_id", "family_name", "constructor_id", "grid", "quali_position",
+    "position", "status", "dnf", "won", "podium", "points_finish",
+    "pace_score", "dnf_prob", "win_prob", "podium_prob", "points_prob", "expected_finish",
+]
 
+
+def _prediction_rows(scored: pd.DataFrame, stage: str, temperature: float | None = None) -> list[dict]:
+    """Per-driver out-of-sample probabilities for external comparisons (e.g. the market).
+
+    Also carries the raw pace score, DNF probability, calibration temperature and the
+    full finishing-position distribution so experiments can re-score a fold offline.
+    """
+    positions = [c for c in scored.columns if c.startswith("finish_p") and c.endswith("_prob")]
+    out = scored[[c for c in PREDICTION_COLUMNS + positions if c in scored.columns]].copy()
+    out["stage"] = stage
+    if temperature is not None:
+        out["temperature"] = float(temperature)
+    return out.to_dict("records")
+
+
+def train_and_eval(*, write_reports: bool = True, predictions_out: list | None = None) -> dict:
+    """Walk-forward evaluation.
+
+    ``write_reports=False`` skips the in-sample diagnostics, the transfer test and
+    all report files, so callers (e.g. ``scripts/market_benchmark.py``) can reuse the
+    exact walk-forward folds. ``predictions_out`` collects each test race's
+    per-driver probabilities (``stage`` = pre_quali / post_quali / post_sprint).
+    """
+    df = _load_training_frame()
+    metrics: dict = {
+        "model_artifacts_written": False,
+        "training_date_range": [str(df["date"].min()), str(df["date"].max())],
+    }
+    if write_reports:
+        metrics.update(_in_sample_diagnostics(df))
+    oos_history = _walk_forward_eval(df, metrics, predictions_out, test_field=_load_eval_field())
+    if not write_reports:
+        return metrics
+    # The live weekend run calibrates on these (race_weekend.py); `after` appends to it.
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    oos_history.to_parquet(OOS_HISTORY_PATH, index=False)
+    metrics["transfer_2026"] = _transfer_eval_2026(df)
+    _add_compat_aliases(metrics)
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
+    _write_eval_md(metrics)
+    return metrics
+
+
+def _in_sample_diagnostics(df: pd.DataFrame) -> dict:
+    """Training-set fit diagnostics (not performance claims)."""
+    eda = _eda(df)
     # Train an in-memory diagnostic bundle only. Champion artifacts are not
     # overwritten by an evaluation run; promotion is a separate review step.
     train_post = df[df["quali_position"].notna()].copy()
@@ -419,8 +553,7 @@ def train_and_eval() -> dict:
         "train_races": int(df.groupby(["season", "round"]).ngroups),
         "pre_quali_temperature": pre_bundle.temperature,
         "post_quali_temperature": post_bundle.temperature,
-        "model_artifacts_written": False,
-        "training_date_range": [str(df["date"].min()), str(df["date"].max())],
+        "walk_forward_mc_samples": pre_bundle.mc_samples,
     }
 
     # In-sample diagnostics (not the shipping metric).
@@ -439,39 +572,60 @@ def train_and_eval() -> dict:
         sprint_b = _eval_baselines(train_sprint, "train_post_sprint", include_pole=True)
         metrics["train_post_sprint"] = {**sprint_m, **sprint_b}
         metrics["post_sprint_temperature"] = sprint_bundle.temperature
+    return metrics
 
-    # Walk-forward: each race is tested only against earlier races.
+
+WALK_FORWARD_MC_SAMPLES = 1200
+OOS_HISTORY_PATH = REPORTS / "oos_calibration_history.parquet"
+
+
+def _walk_forward_eval(
+    df: pd.DataFrame,
+    metrics: dict,
+    predictions_out: list | None = None,
+    test_field: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Run the walk-forward; returns every fold's out-of-sample calibration rows."""
+    # Walk-forward: each race is tested only against earlier races, with the same
+    # train_stage_bundle recipe as the live weekend run. Each stage's out-of-sample
+    # forecasts are collected as they happen and calibrate the later folds.
     wf_results = []
     first_test_season = int(os.environ.get("F1ML_EVAL_FROM_SEASON", "0"))
-    for fold in _walk_forward_folds(df):
-        if fold["test_season"] < first_test_season:
-            continue
+    oos: dict[str, list[pd.DataFrame]] = {m: [] for m in ROLLING_MODES}
+
+    def _history(mode: str) -> pd.DataFrame | None:
+        return pd.concat(oos[mode], ignore_index=True) if oos[mode] else None
+
+    for fold in _walk_forward_folds(df, test_field=test_field):
         tr = fold["train"]
         te = fold["test"]
         if te.empty or len(tr) < 20:
             continue
-        tr_post = tr[tr["quali_position"].notna()]
         te_post = te[te["quali_position"].notna()]
-        # Temperature fit on last 10 races before test, not on test.
-        prior_keys = _race_keys(tr)
-        val_keys = set(prior_keys[-10:])
-        fit_keys = set(prior_keys[:-10])
-        if len(fit_keys) < 10:
-            continue
-        val_mask = _in_keys(tr, val_keys)
-        val_df = tr[val_mask]
-        tr_fit = tr[_in_keys(tr, fit_keys)]
-        if tr_fit.empty:
-            continue
-
         fold_year = int(fold["test_season"]) if os.environ.get("F1ML_FOLD_WEIGHTS", "1") != "0" else EVAL_YEAR
-        pre_f = _train_mode_bundle(
-            tr_fit, "pre_quali", val=val_df if len(val_df) else None, eval_year=fold_year
-        )
+        pre_f, _ = train_stage_bundle(tr, "pre_quali", fold_year, oos_history=_history("pre_quali"),
+                                      mc_samples=WALK_FORWARD_MC_SAMPLES)
+        if pre_f is None:
+            continue
+        post_f = None
+        if len(te_post):
+            post_f, _ = train_stage_bundle(tr, "post_quali", fold_year, oos_history=_history("post_quali"),
+                                           mc_samples=WALK_FORWARD_MC_SAMPLES)
         pre_scored = _score_bundle(te, pre_f)
-        dnf_probs = predict_dnf_probs(pre_f.dnf_model, te, pre_f.dnf_features)
-        dnf_y = te["dnf"].astype(int).to_numpy()
+        post_scored = _score_bundle(te_post, post_f) if post_f is not None else None
+        # Folds before F1ML_EVAL_FROM_SEASON still run, so later calibration sees the
+        # same history as a full evaluation; they are just not reported.
+        oos["pre_quali"].append(history_rows(pre_scored, "pre_quali"))
+        if post_scored is not None:
+            oos["post_quali"].append(history_rows(post_scored, "post_quali"))
+        if fold["test_season"] < first_test_season:
+            continue
+        dnf_rows = te[te["dnf"].notna()]  # DNS / DSQ / withdrawn have no DNF label
+        dnf_probs = predict_dnf_probs(pre_f.dnf_model, dnf_rows, pre_f.dnf_features)
+        dnf_y = dnf_rows["dnf"].astype(int).to_numpy()
         pre_prob = pre_scored["win_prob"]
+        if predictions_out is not None:
+            predictions_out.extend(_prediction_rows(pre_scored, "pre_quali", pre_f.temperature))
         prior_p = prior_form_probabilities(te)
         test_date = str(pd.to_datetime(te["date"]).min().date()) if "date" in te else None
         wf_row = {
@@ -493,16 +647,9 @@ def train_and_eval() -> dict:
         if len(np.unique(dnf_y)) == 2:
             wf_row["dnf_pr_auc"] = float(average_precision_score(dnf_y, dnf_probs))
             wf_row["dnf_roc_auc"] = float(roc_auc_score(dnf_y, dnf_probs))
-        if len(tr_post) and len(te_post):
-            val_post = val_df[val_df["quali_position"].notna()]
-            tr_post_fit = tr_post[~tr_post.index.isin(val_post.index)]
-            post_f = _train_mode_bundle(
-                tr_post_fit,
-                "post_quali",
-                val=val_post if len(val_post) else None,
-                eval_year=fold_year,
-            )
-            post_scored = _score_bundle(te_post, post_f)
+        if post_scored is not None:
+            if predictions_out is not None:
+                predictions_out.extend(_prediction_rows(post_scored, "post_quali", post_f.temperature))
             pole_p = pole_probabilities(te_post)
             qg_p = quali_gap_probabilities(te_post)
             grid_p = grid_probabilities(te_post)
@@ -521,22 +668,14 @@ def train_and_eval() -> dict:
             wf_row["post_pole_hit"] = winner_hit_rate_probs(te_post, pole_p)
             wf_row["post_champ_hit"] = winner_hit_rate_probs(te_post, champ_p)
 
-        tr_sprint = tr[pd.to_numeric(tr["sprint_position"], errors="coerce") > 0].copy()
         te_sprint = te[pd.to_numeric(te["sprint_position"], errors="coerce") > 0].copy()
-        sprint_keys = _race_keys(tr_sprint) if not tr_sprint.empty else []
-        if len(sprint_keys) >= 15 and not te_sprint.empty:
-            val_sprint_keys = set(sprint_keys[-5:])
-            fit_sprint_keys = set(sprint_keys[:-5])
-            val_sprint = tr_sprint[
-                _in_keys(tr_sprint, val_sprint_keys)
-            ]
-            fit_sprint = tr_sprint[
-                _in_keys(tr_sprint, fit_sprint_keys)
-            ]
-            sprint_f = _train_mode_bundle(
-                fit_sprint, "post_sprint", val=val_sprint, eval_year=fold_year
-            )
+        sprint_f = None
+        if not te_sprint.empty:
+            sprint_f, _ = train_stage_bundle(tr, "post_sprint", fold_year, mc_samples=WALK_FORWARD_MC_SAMPLES)
+        if sprint_f is not None:
             sprint_scored = _score_bundle(te_sprint, sprint_f)
+            if predictions_out is not None:
+                predictions_out.extend(_prediction_rows(sprint_scored, "post_sprint", sprint_f.temperature))
             wf_row["sprint_hit"] = winner_hit_rate(te_sprint, sprint_scored["win_prob"])
             wf_row["sprint_top3"] = topk_hit_rate(te_sprint, sprint_scored["win_prob"], k=3)
             wf_row["sprint_log_loss"] = race_log_loss(te_sprint, sprint_scored["win_prob"])
@@ -547,36 +686,42 @@ def train_and_eval() -> dict:
     metrics["walk_forward_2026"] = [r for r in wf_results if r["test_season"] == EVAL_YEAR]
     metrics["oos"] = _oos_summary(wf_results)
     metrics["oos_all"] = _oos_summary(wf_results, eval_year=None)
-    metrics["transfer_2026"] = _transfer_eval_2026(df)
-    oos = metrics["oos"]
-    metrics["test_pre_quali"] = {
-        "test_pre_quali_hit": oos.get("oos_pre_hit", 0),
-        "test_pre_quali_log_loss": oos.get("oos_pre_log_loss", 0),
-    }
-    metrics["test_post_quali"] = {
-        "test_post_quali_hit": oos.get("oos_post_hit", 0),
-        "test_post_quali_log_loss": oos.get("oos_post_log_loss", 0),
-        "test_post_quali_quali_gap_log_loss": oos.get("oos_post_quali_gap_log_loss", 0),
-    }
+    frames = [f for m in ROLLING_MODES for f in oos[m]]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=HISTORY_COLUMNS)
 
-    # Compatibility aliases are out-of-sample only. Training diagnostics use
-    # the explicit train_* keys above.
+
+def _add_compat_aliases(metrics: dict) -> None:
+    """Flat summary keys for the dashboard.
+
+    These average the **2026 walk-forward races only** (out-of-sample, but one
+    season), so they are named ``oos2026_*``. They replace the old ``test_*`` /
+    ``test_rf_*`` keys, which read like a generic test set ("rf" was a leftover from
+    a random-forest model). Training diagnostics stay under explicit ``train_*`` keys.
+    """
+    wf_results = metrics["walk_forward"]
+    oos = metrics["oos"]
+    metrics["oos2026_pre_quali"] = {
+        "oos2026_pre_quali_hit": oos.get("oos_pre_hit", 0),
+        "oos2026_pre_quali_log_loss": oos.get("oos_pre_log_loss", 0),
+    }
+    metrics["oos2026_post_quali"] = {
+        "oos2026_post_quali_hit": oos.get("oos_post_hit", 0),
+        "oos2026_post_quali_log_loss": oos.get("oos_post_log_loss", 0),
+        "oos2026_post_quali_quali_gap_log_loss": oos.get("oos_post_quali_gap_log_loss", 0),
+    }
     wf26_post = [r for r in wf_results if r.get("test_season") == EVAL_YEAR and "post_hit" in r]
-    metrics["test_pole_hit"] = float(np.mean([r["post_pole_hit"] for r in wf26_post])) if wf26_post else 0.0
-    metrics["test_champ_hit"] = float(np.mean([r.get("post_champ_hit", 0.0) for r in wf26_post])) if wf26_post else 0.0
-    metrics["test_rf_hit"] = float(np.mean([r["post_hit"] for r in wf26_post])) if wf26_post else 0
-    metrics["test_rf_top3"] = float(np.mean([r["post_top3"] for r in wf26_post])) if wf26_post else 0
+
+    def _mean(key: str) -> float:
+        return float(np.mean([r.get(key, 0.0) for r in wf26_post])) if wf26_post else 0.0
+
+    metrics["oos2026_post_quali"]["oos2026_post_quali_pole_hit"] = _mean("post_pole_hit")
+    metrics["oos2026_post_quali"]["oos2026_post_quali_champ_hit"] = _mean("post_champ_hit")
+    metrics["oos2026_post_quali"]["oos2026_post_quali_top3"] = _mean("post_top3")
     metrics["train_pole_hit"] = metrics["train_post_quali"].get("train_post_quali_pole_hit", 0)
     metrics["train_champ_hit"] = metrics["train_post_quali"].get("train_post_quali_champ_hit", 0)
-    metrics["train_rf_hit"] = metrics["train_post_quali"].get("train_post_quali_hit", 0)
-    metrics["train_rf_top3"] = metrics["train_post_quali"].get("train_post_quali_top3", 0)
+    metrics["train_model_hit"] = metrics["train_post_quali"].get("train_post_quali_hit", 0)
+    metrics["train_model_top3"] = metrics["train_post_quali"].get("train_post_quali_top3", 0)
     metrics["walk_forward_protocol"] = "One race per test fold; train/calibration data end before test race; production Monte Carlo Plackett-Luce scorer."
-    metrics["walk_forward_mc_samples"] = pre_bundle.mc_samples
-
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    (REPORTS / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
-    _write_eval_md(metrics)
-    return metrics
 
 
 def recalibrate_temperatures() -> dict:
@@ -597,11 +742,18 @@ def recalibrate_temperatures() -> dict:
         keys = _race_keys(sub)
         if len(keys) < 12:
             continue
-        val_keys = set(keys[-12:])
-        val_df = sub[_in_keys(sub, val_keys)]
-        scores = predict_scores(bundle.ranker, val_df, mode)
-        dnf_probs = predict_dnf_probs(bundle.dnf_model, val_df, bundle.dnf_features)
-        bundle.temperature = _fit_plackett_luce_temperature(val_df, scores, dnf_probs)
+        rolling = None
+        if mode in ROLLING_MODES and OOS_HISTORY_PATH.exists():
+            hist = pd.read_parquet(OOS_HISTORY_PATH)
+            rolling = fit_rolling_temperature(hist[hist["stage"] == mode])
+        if rolling is not None:
+            bundle.temperature = rolling
+        else:
+            val_keys = set(keys[-12:])
+            val_df = sub[_in_keys(sub, val_keys)]
+            scores = predict_scores(bundle.ranker, val_df, mode)
+            dnf_probs = predict_dnf_probs(bundle.dnf_model, val_df, bundle.dnf_features)
+            bundle.temperature = _fit_plackett_luce_temperature(val_df, scores, dnf_probs)
         bundle.save(MODELS / mode)
         results[f"{mode}_temperature"] = bundle.temperature
     return results

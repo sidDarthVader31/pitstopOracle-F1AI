@@ -5,7 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-ERA_RESET_YEAR = 2026
+from f1ml.specs import ERA_RESET_YEAR
+
 NEW_ENTRANT_CAR_PRIOR = 1.0  # % behind pole (typical midfield gap)
 NEW_ENTRANT_DRIVER_PRIOR = 0.3  # % behind teammate: typical, not "always faster"
 CAR_GAP_CLIP_PCT = 5.0  # cap wet/incident quali outliers

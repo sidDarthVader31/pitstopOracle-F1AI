@@ -231,3 +231,53 @@ def test_grid_penalty_what_if_never_helps():
         predict.apply_what_if(race, grid_overrides={pole: 20}), race_mode=mode
     ).set_index("driver_id")
     assert moved.loc[pole, "win_prob"] < base.loc[pole, "win_prob"]
+
+
+def _sprint_weekend_frame(*, sprint: bool, quali: bool) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "season": [2026, 2026],
+            "round": [6, 6],
+            "driver_id": ["max_verstappen", "lando_norris"],
+            "won": [0, 0],
+            "sprint_position": [1.0, 2.0] if sprint else [np.nan, np.nan],
+            "quali_position": [2.0, 1.0] if quali else [np.nan, np.nan],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("sprint", "quali", "mode", "stage"),
+    [
+        (False, False, "pre_quali", "pre_quali"),
+        # 2024+ format: the sprint has run, GP qualifying has not. The post_sprint
+        # model was only trained with qualifying known, so it must not be used yet.
+        (True, False, "pre_quali", "pre_quali"),
+        (False, True, "post_quali", "post_quali_pre_sprint"),
+        (True, True, "post_sprint", "post_sprint"),
+    ],
+)
+def test_weekend_stage_needs_quali_before_post_sprint(sprint, quali, mode, stage):
+    import race_weekend
+
+    race = _sprint_weekend_frame(sprint=sprint, quali=quali)
+    assert race_weekend._stage_for(race) == (mode, stage)
+
+
+@pytest.mark.parametrize(
+    ("sprint", "quali", "expected"),
+    [
+        (True, False, "pre_quali"),
+        (True, True, "post_sprint"),
+        (False, True, "post_quali"),
+    ],
+)
+def test_race_status_needs_quali_before_post_sprint(monkeypatch, sprint, quali, expected):
+    monkeypatch.setattr(predict, "grid_metadata", lambda season, rnd: {"has_grid": False})
+    race = _sprint_weekend_frame(sprint=sprint, quali=quali)
+    assert predict.race_status(race, 2026, 6) == expected
+    row = pd.Series(
+        {"season": 2026, "round": 6, "has_winner": 0, "has_sprint_result": sprint, "has_quali": quali}
+    )
+    assert predict._race_status_row(row) == expected
+    assert predict.inference_mode(predict.race_status(race, 2026, 6)) == expected

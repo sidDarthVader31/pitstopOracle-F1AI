@@ -8,6 +8,7 @@ from scipy.stats import spearmanr
 from f1ml.paths import CANONICAL, MANUAL, PROCESSED, RAW
 from f1ml.ratings import build_ratings
 from f1ml.safety_car import add_prior_circuit_safety_features
+from f1ml.specs import ERA_RESET_YEAR
 
 CLASSIFIED = ("Finished", "Lapped")
 
@@ -305,9 +306,9 @@ def impute_missing_quali_gaps(df: pd.DataFrame) -> pd.DataFrame:
     missing = out["quali_position"].notna() & out["best_quali_seconds"].isna()
     if not missing.any():
         return out
-    era = (out["season"] >= 2026).astype(int)
+    era = (out["season"] >= ERA_RESET_YEAR).astype(int)
     for (season, rnd), idx in out[missing].groupby(["season", "round"]).groups.items():
-        race_era = int(season >= 2026)
+        race_era = int(season >= ERA_RESET_YEAR)
         hist = out[
             (era == race_era)
             & out["best_quali_seconds"].notna()

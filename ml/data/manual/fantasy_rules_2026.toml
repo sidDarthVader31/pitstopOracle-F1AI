@@ -1,0 +1,67 @@
+# F1 Fantasy scoring rules used by Pitstop Oracle's projections — 2026 season.
+# Unofficial: our reading of the published rules (MVP_SPEC.md §2.1 lists the sources).
+# Change a value here, bump `version`, and every projection picks it up. No code change.
+version = "2026.1"
+season = 2026
+status = "active"            # active | placeholder
+verified_against = "MVP_SPEC.md §2.1 (Formula1.com, FanAmp, Motorsport Magazine), 2026-11-09"
+notes = """
+Sources disagree on a few values across seasons. Confirm against the in-game rules page.
+Overtakes, Driver of the Day and pit-stop times are not in our data: see [estimates].
+"""
+
+[team]
+budget_m = 100.0
+drivers = 5
+constructors = 2
+free_transfers = 2
+extra_transfer_penalty = -10
+boost_multiplier = 2           # weekly 2X Boost on one driver
+min_price_m = 3.0
+max_price_m = 40.0
+
+[qualifying]
+# Points by qualifying position (P1 first).
+points = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+no_time = -5
+dsq = -15
+q2_cutoff = 16                 # 22-car field: Q1 drops 6, Q2 drops 6
+q3_cutoff = 10
+
+[race]
+points = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+position_gained = 1            # per place gained vs starting grid
+position_lost = -1             # per place lost vs starting grid
+overtake = 1
+fastest_lap = 10
+driver_of_the_day = 10
+dnf = -20
+dsq = -25
+
+[sprint]
+points = [8, 7, 6, 5, 4, 3, 2, 1]
+position_gained = 1
+position_lost = -1
+overtake = 1
+fastest_lap = 5
+dnf = -10                      # reduced from -20 in 2026
+dsq = -10                      # not confirmed; assumed equal to sprint DNF
+
+[constructor]
+# Sum of both drivers (excluding Driver of the Day) plus these.
+# Qualifying bonus: the single best level reached applies.
+quali_both_q3 = 10
+quali_one_q3 = 5
+quali_both_q2 = 3
+quali_one_q2 = 1
+quali_neither_q2 = -1
+include_driver_of_the_day = false
+
+[estimates]
+# Things the model cannot simulate from data we have. Shown as "estimate" in breakdowns.
+overtakes_proxy = "net_places_gained"   # on-track overtakes counted as net places gained (a lower bound)
+driver_of_the_day = "not_modelled"      # fan vote; contributes 0
+fastest_lap = "pace_weighted"           # one classified driver per simulated race, weighted by pace
+pit_stop_points_flat = 5.0              # rough, the same for every team: no stationary-time data
+quali_race_correlation = 0.6            # pre-qualifying: how closely simulated qualifying follows the race draw
+sprint_dnf_scale = 0.35                 # sprint retirement risk relative to the Grand Prix (about 1/3 distance)

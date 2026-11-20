@@ -11,7 +11,7 @@ import pandas as pd
 
 from f1ml.calendar import next_upcoming_race as calendar_next_upcoming_race
 from f1ml.features import attach_circuit_type_feature
-from f1ml.fantasy import constructor_fantasy_points, expected_driver_fantasy_points, oracle_xi
+from f1ml.fantasy import expected_driver_fantasy_points
 from f1ml.modeling import WeekendModels, apply_race_probs, feature_matrix, plackett_luce_win_probs, raw_win_scores
 from f1ml.ranking import WeekendRanker
 from f1ml.safety_car import add_upcoming_circuit_safety_features
@@ -136,7 +136,8 @@ def list_calendar_races() -> pd.DataFrame:
 def _race_status_row(row: pd.Series) -> RaceMode:
     if int(row.get("has_winner", 0)) == 1:
         return "complete"
-    if bool(row.get("has_sprint_result", False)):
+    # post_sprint needs GP qualifying too (2024+ sprints run before it); see race_weekend._stage_for.
+    if bool(row.get("has_sprint_result", False)) and bool(row.get("has_quali", False)):
         return "post_sprint"
     season, rnd = int(row["season"]), int(row["round"])
     meta = grid_metadata(season, rnd)
@@ -150,13 +151,14 @@ def _race_status_row(row: pd.Series) -> RaceMode:
 def race_status(race_df: pd.DataFrame, season: int | None = None, round_num: int | None = None) -> RaceMode:
     if race_df["won"].max() == 1:
         return "complete"
-    if "sprint_position" in race_df and (race_df["sprint_position"] > 0).any():
+    has_quali = race_df["quali_position"].notna().any()
+    if has_quali and "sprint_position" in race_df and (race_df["sprint_position"] > 0).any():
         return "post_sprint"
     if season is not None and round_num is not None:
         meta = grid_metadata(season, round_num)
         if meta.get("has_grid"):
             return "grid_set"
-    if race_df["quali_position"].notna().any():
+    if has_quali:
         return "post_quali"
     return "pre_quali"
 
