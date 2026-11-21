@@ -1,13 +1,16 @@
 {
   "season": 2026,
-  "round": 20,
-  "created_at_utc": "20261108T124014Z",
+  "round": 21,
+  "created_at_utc": "20261120T164815Z",
   "modes": {
     "pre_quali": {
       "status": "trained",
-      "races": 111,
-      "trained_through": "2026-11-01",
-      "temperature": 2.4595094858493627,
+      "races": 112,
+      "trained_through": "2026-11-08",
+      "temperature": 1.4535055355944508,
+      "temperature_source": "rolling_oos",
+      "oos_history_races": 91,
+      "pace_train": "classified",
       "features": [
         "car_pace_ewma",
         "driver_skill_ewma",
@@ -44,13 +47,17 @@
         "car_quali_class_ewma",
         "car_class_delta",
         "driver_race_vs_teammate_ewma"
-      ]
+      ],
+      "mc_samples": 6000
     },
     "post_quali": {
       "status": "trained",
-      "races": 111,
-      "trained_through": "2026-11-01",
-      "temperature": 1.540983549530757,
+      "races": 112,
+      "trained_through": "2026-11-08",
+      "temperature": 0.8589836120408869,
+      "temperature_source": "rolling_oos",
+      "oos_history_races": 92,
+      "pace_train": "classified",
       "features": [
         "car_pace_ewma",
         "driver_skill_ewma",
@@ -98,13 +105,17 @@
         "quali_gap_pct",
         "grid_x_grid_importance",
         "quali_gap_x_grid_importance"
-      ]
+      ],
+      "mc_samples": 6000
     },
     "post_sprint": {
       "status": "trained",
       "races": 27,
       "trained_through": "2026-10-11",
       "temperature": 1.540983549530757,
+      "temperature_source": "last_5_races",
+      "oos_history_races": 0,
+      "pace_train": "all",
       "features": [
         "car_pace_ewma",
         "driver_skill_ewma",
@@ -153,8 +164,11 @@
         "grid_x_grid_importance",
         "quali_gap_x_grid_importance",
         "sprint_position"
-      ]
+      ],
+      "mc_samples": 6000
     }
   },
-  "previous_models_archived_to": "/Users/sid/Documents/sid/projects/pitstopOracle-F1AI/ml/models/archive/auto-20261108T124014Z"
+  "refit_checks": "passed",
+  "promoted": true,
+  "previous_models_archived_to": "/Users/sid/Documents/sid/projects/pitstopOracle-F1AI/ml/models/archive/auto-20261120T164815Z"
 }
